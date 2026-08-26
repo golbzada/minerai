@@ -463,13 +463,24 @@ h1 em {
   place-items: center;
   font-size: 1.3rem;
   border-radius: 12px;
-  background: var(--gold-shine-soft);
+  background: var(--bg-card-alt);
   border: 1px solid var(--border-default);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 2px 8px rgba(0, 0, 0, 0.04);
   flex-shrink: 0;
 }
 
 .metric-icon-symbol {
+  display: inline-block;
+  font-size: 1.3rem;
+  line-height: 1;
+  /* Emojis naturais e coloridos */
+}
+
+/* ==============================================================================
+   PREDEFINIÇÃO SALVA: ÍCONES DOURADOS MONOCROMÁTICOS (ESTILO SILHUETA)
+   Para voltar aos ícones dourados, basta adicionar a classe .gold-mask ou descomentar abaixo:
+============================================================================== */
+.metric-icon-symbol.gold-mask {
   background: var(--gold-shine-icon);
   -webkit-background-clip: text;
   background-clip: text;
@@ -759,6 +770,120 @@ h1 em {
 
 .secondary-btn:hover {
   background: var(--bg-card-alt);
+}
+
+/* Menu Dropdown de Ações (Compartilhar, Exportar, Importar) */
+.toolbar-menu-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.toolbar-menu-btn {
+  height: 44px;
+  width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #FFFFFF;
+  border: 1px solid #E4DFCF;
+  border-radius: 14px;
+  color: #1A1A1A;
+  font-size: 1.25rem;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.toolbar-menu-btn:hover, .toolbar-menu-btn.active {
+  background: #FAF8F2;
+  border-color: #D4CEBE;
+  transform: translateY(-1px);
+}
+
+.toolbar-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 190px;
+  background: #FFFFFF;
+  border: 1px solid #E4DFCF;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  z-index: 1000;
+  animation: mineraiDropdownFade 0.15s ease-out;
+}
+
+@keyframes mineraiDropdownFade {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.toolbar-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #1A1A1A;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.toolbar-menu-item:hover:not(:disabled) {
+  background: #FAF6ED;
+  color: #92400E;
+}
+
+.toolbar-menu-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toolbar-menu-item-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+/* Botão + Nova Oferta em Gradiente Dourado */
+.primary.add.gold-btn, .gold-btn {
+  height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: linear-gradient(135deg, #F7E4A8 0%, #E8B84B 45%, #C4922C 100%);
+  color: #1A1A1A;
+  font-weight: 900;
+  font-size: 0.85rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 3px 10px rgba(196, 146, 44, 0.22);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
+}
+
+.primary.add.gold-btn:hover, .gold-btn:hover {
+  transform: translateY(-1px);
+  opacity: 0.96;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 6px 16px rgba(196, 146, 44, 0.32);
 }
 
 .share-button {

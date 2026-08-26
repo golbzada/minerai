@@ -41,7 +41,7 @@ export default function MetricsBar({ offers = [], tabName = '' }) {
 
       <div className="metric-card">
         <div className="metric-icon">
-          <span className="metric-icon-symbol">📈</span>
+          <span className="metric-icon-symbol">📅</span>
         </div>
         <div className="metric-info">
           <span className="metric-label">Média de Criativos</span>

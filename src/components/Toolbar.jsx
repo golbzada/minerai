@@ -1,7 +1,5 @@
-import React, { useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { STATUS_CONFIG, NICHE_OPTIONS } from '../utils/metaParser';
-
-const EXTENSION_URL = 'https://chromewebstore.google.com/detail/mineirar-helper/dfapbcpmcciaddkefnfjacbojigkbgcp';
 
 export default function Toolbar({
   searchQuery,
@@ -21,7 +19,24 @@ export default function Toolbar({
   onNewOffer,
   onOpenExtension
 }) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const fileInputRef = useRef(null);
+  const menuRef = useRef(null);
+
+  // Fecha o menu dropdown ao clicar fora dele
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setIsMenuOpen(false);
+      }
+    }
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMenuOpen]);
 
   function handleFileChange(e) {
     const file = e.target.files?.[0];
@@ -40,7 +55,7 @@ export default function Toolbar({
 
   return (
     <section className="toolbar-container">
-      {/* Primary search & primary actions */}
+      {/* Primary search & reorganized actions */}
       <div className="toolbar-top">
         <input
           className="search"
@@ -51,6 +66,7 @@ export default function Toolbar({
         />
 
         <div className="toolbar-actions">
+          {/* 1. Botão Extensão (Preto #1A1A1A) */}
           <button
             className="install-extension"
             type="button"
@@ -60,33 +76,64 @@ export default function Toolbar({
             🧩 Extensão
           </button>
 
-          <button
-            className="share-button"
-            type="button"
-            onClick={onShare}
-            disabled={isSharing}
-            title="Gerar link público somente leitura da tab"
-          >
-            🔗 {isSharing ? 'Gerando...' : 'Compartilhar'}
-          </button>
+          {/* 2. Menu Dropdown com Compartilhar, Exportar e Importar */}
+          <div className="toolbar-menu-wrapper" ref={menuRef}>
+            <button
+              className={`toolbar-menu-btn ${isMenuOpen ? 'active' : ''}`}
+              type="button"
+              onClick={() => setIsMenuOpen((prev) => !prev)}
+              title="Mais opções (Compartilhar, Exportar, Importar)"
+              aria-haspopup="true"
+              aria-expanded={isMenuOpen}
+            >
+              ⋯
+            </button>
 
-          <button
-            className="secondary-btn"
-            type="button"
-            onClick={onExport}
-            title="Fazer backup/exportar acervo em JSON"
-          >
-            💾 Exportar
-          </button>
+            {isMenuOpen && (
+              <div className="toolbar-dropdown-menu">
+                <button
+                  className="toolbar-menu-item"
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    onShare();
+                  }}
+                  disabled={isSharing}
+                  title="Gerar link público somente leitura da tab"
+                >
+                  <span className="toolbar-menu-item-icon">🔗</span>
+                  <span>{isSharing ? 'Gerando...' : 'Compartilhar'}</span>
+                </button>
 
-          <button
-            className="secondary-btn"
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            title="Importar acervo de arquivo JSON"
-          >
-            📥 Importar
-          </button>
+                <button
+                  className="toolbar-menu-item"
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    onExport();
+                  }}
+                  title="Fazer backup/exportar acervo em JSON"
+                >
+                  <span className="toolbar-menu-item-icon">💾</span>
+                  <span>Exportar</span>
+                </button>
+
+                <button
+                  className="toolbar-menu-item"
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    fileInputRef.current?.click();
+                  }}
+                  title="Importar acervo de arquivo JSON"
+                >
+                  <span className="toolbar-menu-item-icon">⬇️</span>
+                  <span>Importar</span>
+                </button>
+              </div>
+            )}
+          </div>
+
           <input
             ref={fileInputRef}
             type="file"
@@ -95,10 +142,12 @@ export default function Toolbar({
             onChange={handleFileChange}
           />
 
+          {/* 3. Botão + Nova Oferta em Destaque Dourado */}
           <button
-            className="primary add"
+            className="primary add gold-btn"
             type="button"
             onClick={onNewOffer}
+            title="Cadastrar manualmente uma nova oferta"
           >
             + Nova Oferta
           </button>
