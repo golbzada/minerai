@@ -1594,35 +1594,59 @@ h1 em {
 }
 
 .auth-card {
-  width: min(100%, 430px);
-  padding: 26px;
+  width: min(100%, 420px);
+  padding: 34px 28px 28px;
   border: 1px solid var(--border-default);
-  border-radius: 24px;
+  border-radius: 26px;
   background: var(--bg-card);
-  box-shadow: var(--shadow);
+  box-shadow: 0 16px 45px rgba(26, 26, 26, 0.08);
+}
+
+.auth-card .eyebrow {
+  margin-bottom: 8px;
 }
 
 .auth-card h2 {
-  margin: 0 0 20px;
+  margin: 0 0 22px;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 2.2rem;
   font-weight: 500;
   letter-spacing: -0.04em;
   color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.auth-card .field {
+  margin-bottom: 14px;
+}
+
+.auth-card .field span {
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 3px;
+}
+
+.auth-card .field input {
+  height: 48px;
+  border-radius: 14px;
+  padding: 0 16px;
+  font-size: 0.92rem;
+  border: 1.5px solid var(--border-default);
 }
 
 .steps {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   align-items: center;
-  margin: -6px 0 22px;
+  margin: 0 0 22px;
 }
 
 .steps:before {
   position: absolute;
-  right: 16px;
-  left: 16px;
+  right: 20px;
+  left: 20px;
   top: 50%;
   height: 2px;
   background: var(--border-default);
@@ -1634,15 +1658,15 @@ h1 em {
   position: relative;
   z-index: 1;
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   margin: auto;
   place-items: center;
   border: 2px solid var(--border-default);
   border-radius: 50%;
   background: var(--bg-card);
   color: var(--text-secondary);
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   font-weight: 900;
 }
 
@@ -1653,65 +1677,46 @@ h1 em {
   color: #1A1A1A;
 }
 
-.password-meter {
-  height: 8px;
-  margin: -5px 0 14px;
-  overflow: hidden;
-  border-radius: 99px;
-  background: var(--bg-card-alt);
+.password-strength-container {
+  margin: -4px 0 16px;
 }
 
-.password-meter span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--gold-shine-bar);
-  transition: width 0.2s ease;
-}
-
-.password-rules {
-  display: grid;
-  gap: 8px;
-  margin: 0 0 16px;
-  padding: 0;
-  list-style: none;
-}
-
-.password-rules li {
+.password-strength-header {
   display: flex;
+  justify-content: space-between;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
-  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.strength-hint {
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.3;
+  transition: color 0.2s ease;
+}
+
+.strength-label {
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
 }
 
-.password-rules li span {
-  display: grid;
-  width: 16px;
-  height: 16px;
-  place-items: center;
-  border: 1px solid var(--border-default);
-  border-radius: 50%;
-  background: var(--bg-card);
-  color: var(--text-primary);
-  font-size: 0.62rem;
-  line-height: 1;
-}
-
-.password-rules li.ok {
-  border-color: #E8B84B;
+.password-meter-bar {
+  width: 100%;
+  height: 6px;
+  border-radius: 99px;
   background: var(--bg-card-alt);
-  color: var(--gold-dark);
+  overflow: hidden;
+  border: 1px solid var(--border-default);
 }
 
-.password-rules li.ok span {
-  border-color: #E8B84B;
-  background: var(--gold-shine-button);
-  color: #1A1A1A;
+.password-meter-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s ease;
 }
 
 .plan-card {
@@ -1789,21 +1794,57 @@ h1 em {
 .forgot-link {
   display: block;
   width: fit-content;
-  margin: 10px 0 18px auto;
+  margin: 6px 0 20px auto;
   padding: 2px 0;
   border: 0;
   background: transparent;
-  color: var(--text-secondary);
-  font-size: 0.74rem;
+  color: var(--text-primary);
+  font-size: 0.75rem;
   font-weight: 800;
   text-decoration: underline;
   text-underline-offset: 3px;
   cursor: pointer;
-  transition: color 0.15s ease;
+  transition: opacity 0.15s ease;
 }
 
 .forgot-link:hover {
-  color: var(--text-primary);
+  opacity: 0.75;
+}
+
+.auth-submit-btn {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  height: 50px !important;
+  padding: 0 20px !important;
+  border-radius: 14px !important;
+  background: var(--button-dark-bg) !important;
+  color: #FDF8ED !important;
+  font-size: 0.95rem !important;
+  font-weight: 900 !important;
+  letter-spacing: -0.01em;
+  border: 1px solid var(--border-strong) !important;
+  box-shadow: 0 4px 14px rgba(26, 26, 26, 0.12);
+  transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.auth-submit-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(26, 26, 26, 0.2);
+  opacity: 0.96;
+}
+
+.auth-btn-arrow {
+  font-family: Inter, monospace, sans-serif;
+  font-size: 1.15rem;
+  font-weight: 900;
+  transition: transform 0.15s ease;
+  color: #E8B84B;
+}
+
+.auth-submit-btn:hover:not(:disabled) .auth-btn-arrow {
+  transform: translateX(4px);
 }
 
 .resend-code {
@@ -1838,31 +1879,21 @@ h1 em {
   flex-shrink: 0;
 }
 
-.quick-demo-btn {
-  margin-top: 8px;
-  padding: 8px;
-  border: 1px dashed var(--border-strong);
-  border-radius: 10px;
-  background: var(--bg-card-alt);
-  color: var(--text-primary);
-  font-size: 0.72rem;
-  font-weight: 800;
-  cursor: pointer;
-  width: 100%;
-}
-
 .text-button {
   width: 100%;
-  margin-top: 14px;
+  margin-top: 20px;
   border: 0;
   background: transparent;
-  color: var(--text-secondary);
-  font-size: 0.75rem;
+  color: var(--text-primary);
+  font-size: 0.78rem;
   font-weight: 800;
+  text-align: center;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
 }
 
 .text-button:hover {
-  color: var(--text-primary);
+  opacity: 0.75;
 }
 
 .splash {

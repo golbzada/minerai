@@ -1,25 +1,67 @@
 import React, { useState, useEffect } from 'react';
 import Brand from './Brand';
 import { api } from '../services/api';
-import { INITIAL_USER } from '../services/mockData';
-import { formatCpfCnpj } from '../utils/metaParser';
 
-const CHECKOUT_URL = 'https://checkout.wiven.com.br/checkout/cmqfl2zee0fgs01mvhfa624z8?offer=S9NI6ZT';
+function getPasswordFeedback(password) {
+  if (!password) {
+    return {
+      percentage: 0,
+      color: '#E4DFCF',
+      label: '',
+      hint: 'Mínimo de 8 caracteres, maiúsculas, números e símbolos',
+      isValid: false
+    };
+  }
 
-const PASSWORD_RULES = [
-  { label: '8 caracteres', test: (p) => p.length >= 8 },
-  { label: 'letra maiúscula', test: (p) => /[A-Z]/.test(p) },
-  { label: 'letra minúscula', test: (p) => /[a-z]/.test(p) },
-  { label: 'número', test: (p) => /\d/.test(p) },
-  { label: 'caractere especial', test: (p) => /[^A-Za-z0-9]/.test(p) }
-];
+  const hasLength = password.length >= 8;
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasNumber = /\d/.test(password);
+  const hasSpecial = /[^A-Za-z0-9]/.test(password);
+
+  const passed = [hasLength, hasUpper, hasLower, hasNumber, hasSpecial].filter(Boolean).length;
+  const percentage = (passed / 5) * 100;
+
+  let hint = '';
+  if (!hasLength) {
+    hint = 'Adicione pelo menos 8 caracteres';
+  } else if (!hasUpper) {
+    hint = 'Adicione uma letra maiúscula (A-Z)';
+  } else if (!hasLower) {
+    hint = 'Adicione uma letra minúscula (a-z)';
+  } else if (!hasNumber) {
+    hint = 'Adicione pelo menos um número (0-9)';
+  } else if (!hasSpecial) {
+    hint = 'Adicione um caractere especial (ex: @, #, $, !)';
+  } else {
+    hint = '✓ Senha forte e segura!';
+  }
+
+  let color = '#E74C3C'; // Vermelho (Fraca)
+  let label = 'Senha fraca';
+
+  if (passed === 5) {
+    color = '#27AE60'; // Verde (Forte)
+    label = 'Senha forte';
+  } else if (passed >= 3) {
+    color = '#F39C12'; // Amarelo/Dourado (Média)
+    label = 'Senha média';
+  }
+
+  return {
+    percentage,
+    color,
+    label,
+    hint,
+    isValid: passed === 5
+  };
+}
 
 export default function AuthPage({ onAuthenticated }) {
   const [mode, setMode] = useState('login'); // 'login' | 'register' | 'forgot'
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     name: '',
-    cpf_cnpj: '',
     email: '',
     code: '',
     password: '',
@@ -30,17 +72,11 @@ export default function AuthPage({ onAuthenticated }) {
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
-  const [showPlanModal, setShowPlanModal] = useState(false);
 
-  const ruleResults = PASSWORD_RULES.map((r) => ({
-    ...r,
-    ok: r.test(form.password)
-  }));
-  const passedRulesCount = ruleResults.filter((r) => r.ok).length;
-  const strengthPercentage = (passedRulesCount / PASSWORD_RULES.length) * 100;
-  const isPasswordValid = passedRulesCount === PASSWORD_RULES.length;
+  const passwordFeedback = getPasswordFeedback(form.password);
+  const isPasswordValid = passwordFeedback.isValid;
   const doPasswordsMatch = form.password !== '' && form.password === form.confirm_password;
-  const isPasswordStep = (mode === 'register' && step === 3) || (mode === 'forgot' && step === 3);
+  const isPasswordStep = (mode === 'register' && step === 1) || (mode === 'forgot' && step === 3);
 
   useEffect(() => {
     if (countdown <= 0) return;
@@ -52,7 +88,6 @@ export default function AuthPage({ onAuthenticated }) {
     setStep(1);
     setForm({
       name: '',
-      cpf_cnpj: '',
       email: '',
       code: '',
       password: '',
@@ -62,10 +97,6 @@ export default function AuthPage({ onAuthenticated }) {
     setError('');
     setNotice('');
     setCountdown(0);
-  }
-
-  function handleQuickDemoLogin() {
-    onAuthenticated(INITIAL_USER);
   }
 
   async function handleResendCode() {
@@ -78,8 +109,8 @@ export default function AuthPage({ onAuthenticated }) {
           ? await api.startPasswordReset({ email: form.email })
           : await api.startRegistration({
               name: form.name,
-              cpf_cnpj: form.cpf_cnpj.replace(/\D/g, ''),
-              email: form.email
+              email: form.email,
+              password: form.password
             });
       setForm((prev) => ({ ...prev, code: '' }));
       setNotice(res.message);
@@ -130,32 +161,36 @@ export default function AuthPage({ onAuthenticated }) {
         setMode('login');
         setStep(1);
       } else if (mode === 'register' && step === 1) {
+        if (!form.name.trim()) throw new Error('Por favor, informe seu nome completo.');
+        if (!form.email.trim()) throw new Error('Por favor, informe seu e-mail.');
+        if (!isPasswordValid) throw new Error('A senha ainda não atende aos requisitos mínimos.');
+        if (!doPasswordsMatch) throw new Error('A confirmação da senha não confere.');
+
         const res = await api.startRegistration({
           name: form.name,
-          cpf_cnpj: form.cpf_cnpj.replace(/\D/g, ''),
-          email: form.email
+          email: form.email,
+          password: form.password
         });
         setNotice(res.message);
-        setCountdown(60);
-        setStep(2);
+        if (res.autoConfirmed) {
+          setStep(3);
+        } else {
+          setCountdown(60);
+          setStep(2);
+        }
       } else if (mode === 'register' && step === 2) {
+        if (!form.code.trim()) throw new Error('Digite o código de confirmação recebido no e-mail.');
         const res = await api.verifyRegistration({
           email: form.email,
           code: form.code
         });
-        setForm((prev) => ({ ...prev, registration_token: res.registration_token }));
         setNotice(res.message);
         setStep(3);
       } else if (mode === 'register' && step === 3) {
-        if (!isPasswordValid) throw new Error('A senha ainda não atende aos requisitos mínimos.');
-        if (!doPasswordsMatch) throw new Error('A confirmação da senha não confere.');
-
         const res = await api.completeRegistration({
           name: form.name,
-          cpf_cnpj: form.cpf_cnpj.replace(/\D/g, ''),
           email: form.email,
-          password: form.password,
-          registration_token: form.registration_token
+          password: form.password
         });
         onAuthenticated(res.user);
       }
@@ -190,7 +225,7 @@ export default function AuthPage({ onAuthenticated }) {
               ? 'Bem-vindo de volta'
               : mode === 'forgot'
               ? `Redefinição ${step} de 3`
-              : `Cadastro ${step} de 4`}
+              : `Cadastro ${step} de 3`}
           </p>
 
           <h2>
@@ -200,8 +235,10 @@ export default function AuthPage({ onAuthenticated }) {
               </span>
             ) : mode === 'forgot' ? (
               'Redefina sua senha.'
-            ) : step === 4 ? (
-              'Ative seu acesso.'
+            ) : step === 3 ? (
+              'Conta criada!'
+            ) : step === 2 ? (
+              'Confirme seu e-mail.'
             ) : (
               'Crie sua conta.'
             )}
@@ -209,7 +246,7 @@ export default function AuthPage({ onAuthenticated }) {
 
           {mode === 'register' && (
             <div className="steps" aria-label="Etapas do cadastro">
-              {[1, 2, 3, 4].map((s) => (
+              {[1, 2, 3].map((s) => (
                 <span key={s} className={s <= step ? 'active' : ''}>
                   {s}
                 </span>
@@ -306,7 +343,60 @@ export default function AuthPage({ onAuthenticated }) {
             </>
           )}
 
-          {/* REGISTER STEP 1 */}
+          {/* FORGOT STEP 3 */}
+          {mode === 'forgot' && step === 3 && (
+            <>
+              <label className="field">
+                <span>Nova Senha</span>
+                <input
+                  type="password"
+                  required
+                  autoComplete="new-password"
+                  value={form.password}
+                  placeholder="Crie uma nova senha"
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                />
+              </label>
+
+              <div className="password-strength-container">
+                <div className="password-strength-header">
+                  <span className="strength-hint" style={{ color: passwordFeedback.isValid ? '#27AE60' : 'var(--text-secondary)' }}>
+                    {passwordFeedback.hint}
+                  </span>
+                  {form.password && (
+                    <span className="strength-label" style={{ color: passwordFeedback.color, fontWeight: 900 }}>
+                      {passwordFeedback.label}
+                    </span>
+                  )}
+                </div>
+                <div className="password-meter-bar">
+                  <div
+                    className="password-meter-fill"
+                    style={{
+                      width: `${passwordFeedback.percentage}%`,
+                      background: passwordFeedback.color
+                    }}
+                  />
+                </div>
+              </div>
+
+              <label className="field">
+                <span>Confirmar nova senha</span>
+                <input
+                  type="password"
+                  required
+                  autoComplete="new-password"
+                  value={form.confirm_password}
+                  placeholder="Repita sua nova senha"
+                  onChange={(e) =>
+                    setForm({ ...form, confirm_password: e.target.value })
+                  }
+                />
+              </label>
+            </>
+          )}
+
+          {/* REGISTER STEP 1 (NOME, EMAIL, SENHA, CONFIRMAÇÃO) */}
           {mode === 'register' && step === 1 && (
             <>
               <label className="field">
@@ -320,20 +410,7 @@ export default function AuthPage({ onAuthenticated }) {
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
               </label>
-              <label className="field">
-                <span>CPF ou CNPJ</span>
-                <input
-                  type="text"
-                  required
-                  inputMode="numeric"
-                  maxLength={18}
-                  value={form.cpf_cnpj}
-                  placeholder="000.000.000-00"
-                  onChange={(e) =>
-                    setForm({ ...form, cpf_cnpj: formatCpfCnpj(e.target.value) })
-                  }
-                />
-              </label>
+
               <label className="field">
                 <span>E-mail</span>
                 <input
@@ -345,14 +422,62 @@ export default function AuthPage({ onAuthenticated }) {
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                 />
               </label>
+
+              <label className="field">
+                <span>Senha</span>
+                <input
+                  type="password"
+                  required
+                  autoComplete="new-password"
+                  value={form.password}
+                  placeholder="Crie uma senha forte"
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                />
+              </label>
+
+              <div className="password-strength-container">
+                <div className="password-strength-header">
+                  <span className="strength-hint" style={{ color: passwordFeedback.isValid ? '#27AE60' : 'var(--text-secondary)' }}>
+                    {passwordFeedback.hint}
+                  </span>
+                  {form.password && (
+                    <span className="strength-label" style={{ color: passwordFeedback.color, fontWeight: 900 }}>
+                      {passwordFeedback.label}
+                    </span>
+                  )}
+                </div>
+                <div className="password-meter-bar">
+                  <div
+                    className="password-meter-fill"
+                    style={{
+                      width: `${passwordFeedback.percentage}%`,
+                      background: passwordFeedback.color
+                    }}
+                  />
+                </div>
+              </div>
+
+              <label className="field">
+                <span>Confirmar senha</span>
+                <input
+                  type="password"
+                  required
+                  autoComplete="new-password"
+                  value={form.confirm_password}
+                  placeholder="Repita sua senha"
+                  onChange={(e) =>
+                    setForm({ ...form, confirm_password: e.target.value })
+                  }
+                />
+              </label>
             </>
           )}
 
-          {/* REGISTER STEP 2 */}
+          {/* REGISTER STEP 2 (CÓDIGO DE CONFIRMAÇÃO) */}
           {mode === 'register' && step === 2 && (
             <>
               <p className="form-hint">
-                Enviamos um código de verificação para {form.email}.
+                Enviamos um código de confirmação para <strong>{form.email}</strong>. Digite abaixo para validar sua conta.
               </p>
               <label className="field">
                 <span>Código de verificação</span>
@@ -377,93 +502,44 @@ export default function AuthPage({ onAuthenticated }) {
             </>
           )}
 
-          {/* PASSWORD CREATION (FORGOT STEP 3 OR REGISTER STEP 3) */}
-          {isPasswordStep && (
-            <>
-              <label className="field">
-                <span>Nova Senha</span>
-                <input
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
-                />
-              </label>
-
-              <div
-                className="password-meter"
-                aria-label={`${passedRulesCount} de ${PASSWORD_RULES.length} critérios atendidos`}
-              >
-                <span style={{ width: `${strengthPercentage}%` }} />
-              </div>
-
-              <ul className="password-rules">
-                {ruleResults.map((rule) => (
-                  <li key={rule.label} className={rule.ok ? 'ok' : ''}>
-                    <span>{rule.ok ? '✓' : ''}</span>
-                    {rule.label}
-                  </li>
-                ))}
-              </ul>
-
-              <label className="field">
-                <span>Confirmar senha</span>
-                <input
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  value={form.confirm_password}
-                  onChange={(e) =>
-                    setForm({ ...form, confirm_password: e.target.value })
-                  }
-                />
-              </label>
-            </>
-          )}
-
-          {/* REGISTER STEP 4 - PLAN */}
-          {mode === 'register' && step === 4 && (
-            <div className="plan-card">
-              <div>
-                <span>Plano único</span>
-                <strong>R$ 67,00/ano</strong>
-                <small>
-                  A conta foi criada e ficará ativa após a confirmação do pagamento.
-                </small>
-              </div>
-              <a
-                className="primary wide checkout-button"
-                href={CHECKOUT_URL}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Ir para o checkout <span>-&gt;</span>
-              </a>
+          {/* REGISTER STEP 3 (CONCLUÍDO / ENTRAR) */}
+          {mode === 'register' && step === 3 && (
+            <div className="register-success-box" style={{ textAlign: 'center', padding: '12px 0 16px' }}>
+              <div style={{ fontSize: '2.8rem', marginBottom: '12px' }}>🎉</div>
+              <strong style={{ display: 'block', fontSize: '1.1rem', color: 'var(--text-primary)', marginBottom: '8px' }}>
+                Conta criada com sucesso!
+              </strong>
+              <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+                Seu cadastro no <strong>Mineraí</strong> foi concluído. Sua conta está 100% pronta e ativa para você garimpar ofertas.
+              </p>
             </div>
           )}
 
           {notice && <p className="notice">{notice}</p>}
           {error && <p className="error">{error}</p>}
 
-          {(mode !== 'register' || step !== 4) && (
-            <button
-              className="primary wide"
-              type="submit"
-              disabled={loading || (isPasswordStep && (!isPasswordValid || !doPasswordsMatch))}
-            >
+          <button
+            className="primary auth-submit-btn"
+            type="submit"
+            disabled={loading || (isPasswordStep && (!isPasswordValid || !doPasswordsMatch))}
+          >
+            <span>
               {loading
                 ? 'Aguarde...'
                 : mode === 'login'
                 ? 'Entrar'
                 : mode === 'forgot' && step === 3
                 ? 'Redefinir senha'
+                : mode === 'register' && step === 1
+                ? 'Avançar'
+                : mode === 'register' && step === 2
+                ? 'Validar código'
                 : mode === 'register' && step === 3
-                ? 'Criar usuário'
-                : 'Avançar'}{' '}
-              <span>-&gt;</span>
-            </button>
-          )}
+                ? 'Entrar no Mineraí'
+                : 'Avançar'}
+            </span>
+            <span className="auth-btn-arrow">-&gt;</span>
+          </button>
 
           <button
             className="text-button"
@@ -477,59 +553,8 @@ export default function AuthPage({ onAuthenticated }) {
               ? 'Ainda não tem conta? Cadastre-se'
               : 'Já possui conta? Faça login'}
           </button>
-
-          {mode === 'login' && (
-            <button
-              className="quick-demo-btn"
-              type="button"
-              onClick={handleQuickDemoLogin}
-              title="Acessar o painel imediatamente com dados de teste"
-            >
-              ⚡ Entrar com Conta Demo (Acesso Rápido)
-            </button>
-          )}
         </form>
       </section>
-
-      {showPlanModal && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={(e) => e.target === e.currentTarget && setShowPlanModal(false)}
-        >
-          <div className="modal plan-modal">
-            <div className="modal-head">
-              <div>
-                <p className="eyebrow">Conta inativa</p>
-                <h2>Ative seu acesso.</h2>
-              </div>
-              <button
-                className="icon-button"
-                type="button"
-                onClick={() => setShowPlanModal(false)}
-              >
-                ×
-              </button>
-            </div>
-            <div className="plan-card">
-              <div>
-                <span>Plano único</span>
-                <strong>R$ 67,00/ano</strong>
-                <small>
-                  Sua conta já existe e será liberada após a confirmação do pagamento.
-                </small>
-              </div>
-              <a
-                className="primary wide checkout-button"
-                href={CHECKOUT_URL}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Ir para o checkout <span>-&gt;</span>
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
     </main>
   );
 }

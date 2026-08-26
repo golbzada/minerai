@@ -96,29 +96,14 @@ export const api = {
     return { message: 'Login realizado com sucesso!', user };
   },
 
-  async startRegistration({ name, cpf_cnpj, email }) {
-    if (isSupabaseConfigured && supabase) {
-      return { message: `Pronto! Defina sua senha para concluir seu cadastro.` };
-    }
-    return { message: `Código de verificação enviado para ${email}. (Use 123456 no teste local)` };
-  },
-
-  async verifyRegistration({ email, code }) {
-    return {
-      message: 'Código verificado com sucesso!',
-      registration_token: `reg_token_${Date.now()}`
-    };
-  },
-
-  async completeRegistration({ email, password, name, cpf_cnpj }) {
+  async startRegistration({ name, email, password }) {
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
         options: {
           data: {
-            name: name ? name.trim() : email.split('@')[0],
-            cpf_cnpj: cpf_cnpj || ''
+            name: name ? name.trim() : email.split('@')[0]
           }
         }
       });
@@ -127,19 +112,62 @@ export const api = {
         throw new Error(error.message || 'Erro ao realizar cadastro no Supabase.');
       }
 
-      const user = {
-        id: data.user?.id || `usr_${Date.now()}`,
+      const autoConfirmed = Boolean(data.session);
+      return {
+        message: autoConfirmed
+          ? 'Cadastro realizado com sucesso!'
+          : `Enviamos um código de confirmação para ${email}.`,
+        autoConfirmed,
+        user: data.user
+      };
+    }
+
+    return {
+      message: `Código de confirmação enviado para ${email}. (Use 123456 no teste local)`,
+      autoConfirmed: false
+    };
+  },
+
+  async verifyRegistration({ email, code }) {
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: email.trim(),
+        token: code.trim(),
+        type: 'signup'
+      });
+
+      if (error) {
+        const { data: d2, error: e2 } = await supabase.auth.verifyOtp({
+          email: email.trim(),
+          token: code.trim(),
+          type: 'email'
+        });
+        if (e2) throw new Error(error.message || 'Código de confirmação inválido ou expirado.');
+      }
+
+      return { message: 'Código verificado com sucesso!' };
+    }
+
+    if (code.trim() !== '123456') {
+      throw new Error('Código incorreto. Use 123456 no teste local.');
+    }
+    return { message: 'Código verificado com sucesso!' };
+  },
+
+  async completeRegistration({ email, password, name }) {
+    if (isSupabaseConfigured && supabase) {
+      const { data: { user } } = await supabase.auth.getUser();
+      const finalUser = user || {
+        id: `usr_${Date.now()}`,
         name: name ? name.trim() : email.split('@')[0],
         email: email.trim(),
         active: true,
         plan: 'annual'
       };
-
-      storage.setUser(user);
-      return { message: 'Cadastro concluído com sucesso!', user };
+      storage.setUser(finalUser);
+      return { message: 'Cadastro concluído com sucesso!', user: finalUser };
     }
 
-    // Fallback local
     const user = {
       id: `usr_${Date.now()}`,
       name: name ? name.trim() : email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
@@ -155,9 +183,33 @@ export const api = {
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
       if (error) throw new Error(error.message || 'Erro ao enviar e-mail de recuperação.');
-      return { message: `Enviamos as instruções de recuperação para ${email}.` };
+      return { message: `Enviamos o código/link de recuperação para ${email}.` };
     }
     return { message: `Código de redefinição enviado para ${email}. (Use 123456 no teste local)` };
+  },
+
+  async verifyPasswordReset({ email, code }) {
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: email.trim(),
+        token: code.trim(),
+        type: 'recovery'
+      });
+      if (error) throw new Error(error.message || 'Código de recuperação inválido ou expirado.');
+      return { message: 'Código verificado com sucesso!', reset_token: 'valid' };
+    }
+    return { message: 'Código verificado com sucesso!', reset_token: `reset_token_${Date.now()}` };
+  },
+
+  async completePasswordReset({ email, password }) {
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.auth.updateUser({
+        password
+      });
+      if (error) throw new Error(error.message || 'Erro ao atualizar a nova senha.');
+      return { message: 'Senha redefinida com sucesso! Faça login com sua nova senha.' };
+    }
+    return { message: 'Senha redefinida com sucesso! Faça login com sua nova senha.' };
   },
 
   async logout() {
