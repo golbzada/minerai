@@ -1,0 +1,35 @@
+==============================================================================
+   MINERAÍ EXTENSÃO - GUIA DE INSTALAÇÃO RÁPIDA (CHROME & MICROSOFT EDGE)
+==============================================================================
+
+Parabéns! Você tem em mãos a extensão oficial Mineraí para garimpar ofertas
+vencedoras direto da Biblioteca de Anúncios Meta.
+
+------------------------------------------------------------------------------
+PASSO A PASSO PARA INSTALAR (MENOS DE 1 MINUTO):
+------------------------------------------------------------------------------
+
+1. DESCOMPACTAR A PASTA:
+   - Se este arquivo estiver dentro de um .zip, extraia todo o conteúdo
+     para uma pasta fácil no seu computador (Ex: Documentos\Minerai-Extensao).
+
+2. ABRIR A TELA DE EXTENSÕES DO NAVEGADOR:
+   - No Google Chrome: Digite na barra de endereço: chrome://extensions
+   - No Microsoft Edge: Digite na barra de endereço: edge://extensions
+
+3. ATIVAR O MODO DESENVOLVEDOR:
+   - No canto superior direito da página de extensões, ative a chavinha
+     "Modo do desenvolvedor" (Developer Mode).
+
+4. CARREGAR A EXTENSÃO:
+   - Clique no botão "Carregar sem compactação" (Load unpacked) no canto superior esquerdo.
+   - Selecione a pasta descompactada da extensão (onde estão manifest.json, content.js, etc.).
+
+5. PRONTO!
+   - Fixe o ícone "M" dourado do Mineraí na sua barra de extensões.
+   - Acesse o painel do Mineraí (app.minerarads.com.br ou localhost:5173) para sincronizar seu login.
+   - Abra a Biblioteca de Anúncios Meta (facebook.com/ads/library) e aproveite os filtros e o garimpo em 1 clique!
+
+==============================================================================
+MINERAÍ - GARIMPE. REFINE. LUCRE.
+==============================================================================

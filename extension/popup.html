@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mineraí Extensão</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header com Logo Mineraí -->
+    <header class="popup-header">
+      <div class="brand-logo">
+        <div class="brand-mark">
+          <span>M</span>
+        </div>
+        <div class="brand-info">
+          <h1>Mineraí</h1>
+          <span class="brand-tag">Extensão Oficial</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Card de Status do Usuário -->
+    <section class="status-card" id="user-status-card">
+      <div class="status-loading" id="status-loading">
+        <div class="spinner"></div>
+        <span>Verificando conexão...</span>
+      </div>
+
+      <div class="status-online" id="status-online" style="display: none;">
+        <div class="user-avatar-badge">👤</div>
+        <div class="user-details">
+          <span class="user-label">Conectado como:</span>
+          <strong class="user-name" id="user-display-name">Carregando...</strong>
+          <span class="user-email" id="user-display-email">email@exemplo.com</span>
+        </div>
+      </div>
+
+      <div class="status-offline" id="status-offline" style="display: none;">
+        <div class="offline-icon">🔒</div>
+        <div class="offline-details">
+          <strong>Não conectado</strong>
+          <p>Faça login no Mineraí para minerar ofertas com 1 clique.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Ações Rápidas -->
+    <div class="actions-group">
+      <button class="btn-primary" id="btn-open-dash">
+        <span>🚀 Abrir Painel Mineraí</span>
+      </button>
+
+      <button class="btn-secondary" id="btn-open-meta">
+        <span>⚡ Ir para a Biblioteca Meta</span>
+      </button>
+    </div>
+
+    <!-- Rodapé -->
+    <footer class="popup-footer">
+      <span>Mineraí SaaS • Inteligência de Anúncios</span>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
