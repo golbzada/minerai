@@ -12,6 +12,7 @@ import TabModal from './components/TabModal';
 import AuthPage from './components/AuthPage';
 import PublicShare from './components/PublicShare';
 import { api } from './services/api';
+import { supabase, isSupabaseConfigured } from './services/supabaseClient';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(undefined);
@@ -54,6 +55,17 @@ export default function App() {
       .me()
       .then((res) => setCurrentUser(res.user))
       .catch(() => setCurrentUser(null));
+
+    if (isSupabaseConfigured && supabase) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (session?.user) {
+          api.me().then((res) => setCurrentUser(res.user)).catch(() => {});
+        } else if (event === 'SIGNED_OUT') {
+          setCurrentUser(null);
+        }
+      });
+      return () => subscription?.unsubscribe();
+    }
   }, []);
 
   // Load tabs

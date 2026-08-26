@@ -179,13 +179,11 @@ export default function AuthPage({ onAuthenticated }) {
           setStep(2);
         }
       } else if (mode === 'register' && step === 2) {
-        if (!form.code.trim()) throw new Error('Digite o código de confirmação recebido no e-mail.');
-        const res = await api.verifyRegistration({
+        const res = await api.login({
           email: form.email,
-          code: form.code
+          password: form.password
         });
-        setNotice(res.message);
-        setStep(3);
+        onAuthenticated(res.user);
       } else if (mode === 'register' && step === 3) {
         const res = await api.completeRegistration({
           name: form.name,
@@ -473,33 +471,26 @@ export default function AuthPage({ onAuthenticated }) {
             </>
           )}
 
-          {/* REGISTER STEP 2 (CÓDIGO DE CONFIRMAÇÃO) */}
+          {/* REGISTER STEP 2 (CONFIRMAÇÃO POR E-MAIL) */}
           {mode === 'register' && step === 2 && (
-            <>
-              <p className="form-hint">
-                Enviamos um código de confirmação para <strong>{form.email}</strong>. Digite abaixo para validar sua conta.
+            <div className="email-confirm-step" style={{ textAlign: 'center', padding: '6px 0 10px' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>📩</div>
+              <p className="form-hint" style={{ fontSize: '0.86rem', lineHeight: '1.5', margin: '0 0 16px' }}>
+                Enviamos um link de confirmação para:<br />
+                <strong style={{ color: 'var(--text-primary)', fontSize: '0.95rem' }}>{form.email}</strong>
               </p>
-              <label className="field">
-                <span>Código de verificação</span>
-                <input
-                  type="text"
-                  required
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  value={form.code}
-                  placeholder="Ex: 123456"
-                  onChange={(e) => setForm({ ...form, code: e.target.value })}
-                />
-              </label>
+              <div style={{ padding: '14px', borderRadius: '14px', background: 'var(--bg-card-alt)', border: '1px solid var(--border-default)', marginBottom: '16px', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.5', textAlign: 'left' }}>
+                💡 Abra sua caixa de entrada e clique no link <strong>"Confirm email address"</strong> para liberar seu acesso e entrar no painel.
+              </div>
               <button
                 className="resend-code"
                 type="button"
                 onClick={handleResendCode}
                 disabled={loading || countdown > 0}
               >
-                {countdown > 0 ? `Reenviar em ${countdown}s` : 'Reenviar código'}
+                {countdown > 0 ? `Reenviar em ${countdown}s` : 'Reenviar e-mail de confirmação'}
               </button>
-            </>
+            </div>
           )}
 
           {/* REGISTER STEP 3 (CONCLUÍDO / ENTRAR) */}
@@ -533,7 +524,7 @@ export default function AuthPage({ onAuthenticated }) {
                 : mode === 'register' && step === 1
                 ? 'Avançar'
                 : mode === 'register' && step === 2
-                ? 'Validar código'
+                ? 'Já confirmei no e-mail / Entrar'
                 : mode === 'register' && step === 3
                 ? 'Entrar no Mineraí'
                 : 'Avançar'}
