@@ -14,6 +14,7 @@ import AuthPage from './components/AuthPage';
 import PublicShare from './components/PublicShare';
 import { api } from './services/api';
 import { supabase, isSupabaseConfigured } from './services/supabaseClient';
+import { resolveStatus } from './utils/offerMeta';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(undefined);
@@ -102,7 +103,15 @@ export default function App() {
 
   useEffect(() => {
     if (currentUser) {
+      try {
+        localStorage.setItem('minerai_user', JSON.stringify(currentUser));
+        window.postMessage({ type: 'MINERAI_SYNC_AUTH', user: currentUser }, '*');
+      } catch (e) {}
       loadTabs();
+    } else if (currentUser === null) {
+      try {
+        localStorage.removeItem('minerai_user');
+      } catch (e) {}
     }
   }, [currentUser]);
 
@@ -126,9 +135,10 @@ export default function App() {
       );
     }
 
-    // Status filter
+    // Status filter — compara com o estágio exibido (que acompanha o tempo
+    // de veiculação), não com o valor congelado no banco.
     if (statusFilter !== 'all') {
-      result = result.filter((o) => o.status === statusFilter);
+      result = result.filter((o) => resolveStatus(o) === statusFilter);
     }
 
     // Niche filter
@@ -285,25 +295,32 @@ export default function App() {
     }
   }
 
-  function handleExportBackup() {
-    const jsonStr = api.exportData();
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `minerarads_backup_${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setFeedbackNotice('Backup do acervo exportado com sucesso!');
+  async function handleExportBackup() {
+    try {
+      const jsonStr = await api.exportData();
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `minerarads_backup_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setFeedbackNotice('Backup do acervo exportado com sucesso!');
+    } catch (err) {
+      setFeedbackNotice(err.message || 'Erro ao exportar backup.');
+    }
   }
 
-  function handleImportBackup(jsonText) {
+  async function handleImportBackup(jsonText) {
     try {
-      const res = api.importData(jsonText);
-      setFeedbackNotice(`Backup restaurado com sucesso! (${res.tabs.length} tabs e ${res.offers.length} ofertas)`);
-      loadTabs();
+      const res = await api.importData(jsonText);
+      setFeedbackNotice(
+        `Backup restaurado com sucesso! (${res.tabs.length} tabs e ${res.offers.length} ofertas)`
+      );
+      await loadTabs();
+      await loadOffers();
     } catch (e) {
-      alert(`Erro na importação: ${e.message}`);
+      setFeedbackNotice(`Erro na importação: ${e.message}`);
     }
   }
 

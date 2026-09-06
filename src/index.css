@@ -1064,11 +1064,30 @@ h1 em {
 
 .page-id {
   overflow: hidden;
-  margin: 4px 0 8px;
+  margin: 4px 0 6px;
   color: var(--text-secondary);
   font-size: 0.68rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Link direto para a página de vendas capturada pela extensão */
+.sales-page-link {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  margin: 0 0 8px;
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px dashed currentColor;
+}
+
+.sales-page-link:hover {
+  color: var(--text-primary);
 }
 
 .meta {

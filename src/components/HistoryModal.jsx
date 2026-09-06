@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
+import { normalizeHistory, todayIso } from '../utils/offerMeta';
 
 export default function HistoryModal({ offer, onClose, onAddResult, onDeleteEntry }) {
-  const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newDate, setNewDate] = useState(todayIso());
   const [newCount, setNewCount] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const history = [...(offer.history || [])].sort((a, b) =>
-    a.result_date.localeCompare(b.result_date)
-  );
+  // Aceita tanto o formato do Supabase ({date, count}) quanto o legado
+  // ({result_date, results_count}) sem quebrar a tela.
+  const history = normalizeHistory(offer.history);
 
   async function handleAddEntry(e) {
     e.preventDefault();
@@ -104,14 +105,14 @@ export default function HistoryModal({ offer, onClose, onAddResult, onDeleteEntr
             <tbody>
               {history.map((item, idx) => {
                 const prev = idx > 0 ? history[idx - 1] : null;
-                const diff = prev ? item.results_count - prev.results_count : 0;
-                const percent = prev && prev.results_count > 0
-                  ? Math.round((diff / prev.results_count) * 100)
+                const diff = prev ? item.count - prev.count : 0;
+                const percent = prev && prev.count > 0
+                  ? Math.round((diff / prev.count) * 100)
                   : 0;
 
-                let dateFormatted = item.result_date;
+                let dateFormatted = item.date;
                 try {
-                  dateFormatted = new Date(`${item.result_date}T12:00:00`).toLocaleDateString('pt-BR', {
+                  dateFormatted = new Date(`${item.date}T12:00:00`).toLocaleDateString('pt-BR', {
                     day: '2-digit',
                     month: '2-digit',
                     year: 'numeric'
@@ -119,12 +120,12 @@ export default function HistoryModal({ offer, onClose, onAddResult, onDeleteEntr
                 } catch (e) {}
 
                 return (
-                  <tr key={item.result_date}>
+                  <tr key={item.date}>
                     <td>
                       <strong>{dateFormatted}</strong>
                     </td>
                     <td>
-                      <span className="ads-pill">{item.results_count} ads</span>
+                      <span className="ads-pill">{item.count} ads</span>
                     </td>
                     <td>
                       {idx === 0 ? (
@@ -141,7 +142,7 @@ export default function HistoryModal({ offer, onClose, onAddResult, onDeleteEntr
                       <button
                         className="delete-entry-btn"
                         type="button"
-                        onClick={() => handleDelete(item.result_date)}
+                        onClick={() => handleDelete(item.date)}
                         title="Excluir esta medição"
                       >
                         🗑️

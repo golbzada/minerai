@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Chart from './Chart';
 import { STATUS_CONFIG } from '../utils/metaParser';
+import { normalizeHistory, resolveRunningDays, resolveStatus, decodeNotes } from '../utils/offerMeta';
 
 export default function OfferCard({
   offer,
@@ -13,7 +14,13 @@ export default function OfferCard({
   readOnly = false
 }) {
   const [showNotes, setShowNotes] = useState(false);
-  const destinationUrl = offer.destination_url || offer.landing_page || offer.library_url;
+
+  // Link da biblioteca (o anúncio na Meta) e link da página de vendas são
+  // coisas diferentes e ambos precisam ficar acessíveis no card.
+  const libraryUrl = offer.library_url || offer.destination_url || offer.landing_page;
+  const salesPageUrl = offer.destination_url || offer.landing_page || '';
+  const hasSalesPage = Boolean(salesPageUrl) && salesPageUrl !== libraryUrl;
+
   const avatarUrl =
     offer.avatar_url ||
     offer.image_url ||
@@ -21,20 +28,18 @@ export default function OfferCard({
       ? `https://graph.facebook.com/${offer.page_id}/picture?type=large`
       : null);
 
-  const runningDays = Number(offer.running_days) || 1;
+  // Recalculado a partir da data de início: anda sozinho a cada dia.
+  const runningDays = resolveRunningDays(offer);
   const adsCount = offer.ads_count != null ? Number(offer.ads_count) : 1;
-  const statusCfg = STATUS_CONFIG[offer.status] || STATUS_CONFIG.testing;
+  const statusCfg = STATUS_CONFIG[resolveStatus(offer)] || STATUS_CONFIG.testing;
+  const notesText = offer.notes ?? decodeNotes(offer.funnel_notes).notes;
 
-  // Garante histórico formatado com contagem correta
-  let historyList =
-    offer.history && Array.isArray(offer.history) && offer.history.length > 0
-      ? [...offer.history]
-      : [];
+  let historyList = normalizeHistory(offer.history);
 
   if (historyList.length === 0) {
-    historyList = [{ count: adsCount, date: new Date().toISOString() }];
-  } else if (historyList.length === 1 && (Number(historyList[0].count) === 0 || Number(historyList[0].ads_count) === 0) && adsCount > 0) {
-    historyList[0] = { ...historyList[0], count: adsCount, ads_count: adsCount };
+    historyList = [{ date: new Date().toISOString().slice(0, 10), count: adsCount }];
+  } else if (historyList.length === 1 && historyList[0].count === 0 && adsCount > 0) {
+    historyList = [{ ...historyList[0], count: adsCount }];
   }
 
   const historyCount = historyList.length;
@@ -57,10 +62,10 @@ export default function OfferCard({
 
         <a
           className="photo"
-          href={destinationUrl}
+          href={libraryUrl}
           target="_blank"
           rel="noreferrer"
-          title="Abrir anúncio / biblioteca na Meta"
+          title="Abrir anúncio na Biblioteca de Anúncios da Meta"
         >
           <span className="index">{String(index + 1).padStart(2, '0')}</span>
           {avatarUrl && (
@@ -92,8 +97,25 @@ export default function OfferCard({
 
             <h2 title={offer.name}>{offer.name}</h2>
             <p className="page-id">
-              Meta ID: {offer.page_id || 'N/A'} · {runningDays} {runningDays === 1 ? 'dia rodando' : 'dias rodando'}
+              <span title="Tempo de veiculação, atualizado automaticamente todo dia">
+                ⏳ {runningDays} {runningDays === 1 ? 'dia rodando' : 'dias rodando'}
+              </span>
+              {' · '}
+              <span title="Anúncios ativos na última medição">📊 {adsCount} ativos</span>
+              {' · '}
+              <span title="ID da página do anunciante na Meta">ID {offer.page_id || 'N/A'}</span>
             </p>
+            {hasSalesPage && (
+              <a
+                className="sales-page-link"
+                href={salesPageUrl}
+                target="_blank"
+                rel="noreferrer"
+                title={salesPageUrl}
+              >
+                🔗 Página de vendas
+              </a>
+            )}
           </div>
 
           <div className="meta">
@@ -106,7 +128,7 @@ export default function OfferCard({
             <div className="card-actions">
               {!readOnly && (
                 <>
-                  {(offer.notes || offer.funnel_notes) && (
+                  {notesText && (
                     <button
                       className={`action-btn-subtle ${showNotes ? 'active' : ''}`}
                       onClick={() => setShowNotes(!showNotes)}
@@ -141,11 +163,11 @@ export default function OfferCard({
                 </>
               )}
               <a
-                href={destinationUrl}
+                href={libraryUrl}
                 target="_blank"
                 rel="noreferrer"
-                aria-label="Abrir oferta"
-                title="Abrir na Biblioteca de Anúncios"
+                aria-label="Abrir na Biblioteca de Anúncios"
+                title="Abrir na Biblioteca de Anúncios da Meta"
               >
                 ↗
               </a>
@@ -155,10 +177,10 @@ export default function OfferCard({
       </div>
 
       {/* Anotações de Espionagem */}
-      {showNotes && (offer.notes || offer.funnel_notes) && (
+      {showNotes && notesText && (
         <div className="notes-box">
           <strong>💡 Anotação de Espionagem:</strong>
-          <p>{offer.notes || offer.funnel_notes}</p>
+          <p>{notesText}</p>
         </div>
       )}
 

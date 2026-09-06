@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
 import { extractPageIdFromUrl, NICHE_OPTIONS, STATUS_CONFIG, getFbAvatarUrl } from '../utils/metaParser';
+import { classifyStatus, STAGE_DAYS } from '../utils/offerMeta';
+
+// Valor especial do seletor: deixa o estágio ser recalculado pelo tempo.
+const AUTO_STATUS = 'auto';
 
 const EMPTY_OFFER = {
   name: '',
@@ -7,7 +11,7 @@ const EMPTY_OFFER = {
   destination_url: '',
   niche: 'Saúde & Beleza',
   custom_niche: '',
-  status: 'testing',
+  status: AUTO_STATUS,
   notes: '',
   initial_results: '1',
   running_days: '1'
@@ -24,7 +28,7 @@ export default function OfferModal({ offer, onClose, onSave }) {
           destination_url: offer.destination_url || offer.landing_page || '',
           niche: isExistingCustom ? 'Outros (Personalizado)' : (offer.niche || 'Saúde & Beleza'),
           custom_niche: isExistingCustom ? offer.niche : '',
-          status: offer.status || 'testing',
+          status: offer.meta?.status_manual ? offer.status : AUTO_STATUS,
           notes: offer.notes || offer.funnel_notes || '',
           initial_results: String(offer.ads_count ?? 1),
           running_days: String(offer.running_days ?? 1)
@@ -62,7 +66,13 @@ export default function OfferModal({ offer, onClose, onSave }) {
         ? (formData.custom_niche.trim() || 'Outros')
         : formData.niche;
 
-    const pageId = extractPageIdFromUrl(formData.library_url) || offer?.page_id || 'N/A';
+    // O ID já gravado (vindo da extensão) vale mais do que o palpite genérico
+    // da URL — só o substituímos quando a URL revela um ID de página real.
+    const parsedPageId = extractPageIdFromUrl(formData.library_url);
+    const pageId =
+      parsedPageId && parsedPageId !== '4'
+        ? parsedPageId
+        : offer?.page_id || parsedPageId || 'N/A';
     const adsCount = Math.max(0, parseInt(formData.initial_results, 10) || 1);
     const runningDays = Math.max(1, parseInt(formData.running_days, 10) || 1);
 
@@ -70,13 +80,16 @@ export default function OfferModal({ offer, onClose, onSave }) {
     setError('');
 
     try {
+      const isAutoStatus = formData.status === AUTO_STATUS;
+
       await onSave({
         name: formData.name.trim(),
         library_url: formData.library_url.trim(),
         destination_url: formData.destination_url.trim() || formData.library_url.trim(),
         landing_page: formData.destination_url.trim() || formData.library_url.trim(),
         niche: finalNiche,
-        status: formData.status,
+        status: isAutoStatus ? classifyStatus(runningDays) : formData.status,
+        status_manual: !isAutoStatus,
         notes: formData.notes,
         funnel_notes: formData.notes,
         page_id: pageId,
@@ -164,6 +177,7 @@ export default function OfferModal({ offer, onClose, onSave }) {
               value={formData.status}
               onChange={(e) => setFormData({ ...formData, status: e.target.value })}
             >
+              <option value={AUTO_STATUS}>Automático (pelo tempo rodando)</option>
               {Object.values(STATUS_CONFIG).map((s) => (
                 <option key={s.key} value={s.key}>
                   {s.label}
@@ -236,7 +250,12 @@ export default function OfferModal({ offer, onClose, onSave }) {
         </div>
 
         <p className="form-hint">
-          Ao salvar, o sistema analisa os parâmetros da URL, sincroniza o avatar do anunciante no Facebook Graph e atualiza o histórico e os dias rodando.
+          O tempo rodando é convertido em data de início: a partir daí o contador
+          avança sozinho todo dia, sem você precisar editar a oferta de novo. No
+          status <strong>Automático</strong>, o estágio acompanha esse tempo — até{' '}
+          {STAGE_DAYS.pre_scaling - 1} dias em teste, {STAGE_DAYS.pre_scaling} a{' '}
+          {STAGE_DAYS.scaling - 1} pré-escala, {STAGE_DAYS.scaling} a{' '}
+          {STAGE_DAYS.winner - 1} escalando e {STAGE_DAYS.winner}+ vencedor.
         </p>
 
         {error && <p className="error">{error}</p>}

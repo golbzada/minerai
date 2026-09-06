@@ -13,7 +13,10 @@ export function extractPageIdFromUrl(url) {
     const viewAllPageId = parsed.searchParams.get('view_all_page_id');
     if (viewAllPageId) return viewAllPageId;
 
-    const pageId = parsed.searchParams.get('page_id') || parsed.searchParams.get('id');
+    // Atenção: em /ads/library/?id=... o `id` é o ID do ANÚNCIO na biblioteca,
+    // não o ID da página. Usá-lo aqui quebrava o avatar do anunciante.
+    const isAdLibraryUrl = /\/ads\/library/i.test(parsed.pathname);
+    const pageId = parsed.searchParams.get('page_id') || (isAdLibraryUrl ? null : parsed.searchParams.get('id'));
     if (pageId) return pageId;
 
     // Check pathname patterns
@@ -63,6 +66,13 @@ export const STATUS_CONFIG = {
     color: '#00875a',
     bg: '#e3fcef',
     border: '#abf5d1'
+  },
+  pre_scaling: {
+    key: 'pre_scaling',
+    label: 'Pré-escala 🌱',
+    color: '#b45309',
+    bg: '#fef3c7',
+    border: '#fcd34d'
   },
   testing: {
     key: 'testing',

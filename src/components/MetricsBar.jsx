@@ -1,9 +1,11 @@
 import React from 'react';
+import { resolveStatus } from '../utils/offerMeta';
 
 export default function MetricsBar({ offers = [], tabName = '' }) {
   const totalOffers = offers.length;
-  const winnersCount = offers.filter((o) => o.status === 'winner').length;
-  const scalingCount = offers.filter((o) => o.status === 'scaling').length;
+  const stages = offers.map(resolveStatus);
+  const winnersCount = stages.filter((s) => s === 'winner').length;
+  const scalingCount = stages.filter((s) => s === 'scaling').length;
 
   const totalAds = offers.reduce((acc, o) => acc + (Number(o.ads_count) || 0), 0);
   const avgAds = totalOffers > 0 ? Math.round(totalAds / totalOffers) : 0;

@@ -1,5 +1,71 @@
 import { storage } from './storage';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
+import {
+  decodeNotes,
+  encodeNotes,
+  resolveRunningDays,
+  daysToStartDate,
+  normalizeHistory,
+  upsertHistory,
+  historyEntry,
+  classifyStatus,
+  todayIso
+} from '../utils/offerMeta';
+
+/**
+ * Converte uma linha crua da tabela `offers` no formato usado pela interface:
+ * separa anotações dos metadados e recalcula os dias rodando na hora.
+ */
+function formatOffer(row) {
+  if (!row) return row;
+
+  const { notes, meta } = decodeNotes(row.funnel_notes);
+  const history = normalizeHistory(row.history).map((h) => historyEntry(h.date, h.count));
+
+  return {
+    ...row,
+    notes,
+    funnel_notes: notes,
+    meta,
+    history,
+    start_date: meta.start_date || null,
+    library_id: meta.library_id || null,
+    destination_url: row.landing_page || row.library_url || '',
+    running_days: resolveRunningDays(row, meta)
+  };
+}
+
+/**
+ * Monta o `funnel_notes` (anotações + metadados) a partir dos dados do
+ * formulário ou da extensão, preservando metadados já existentes.
+ */
+function buildNotesField(offerData, existingMeta = {}) {
+  const incoming = offerData.meta || {};
+  const notes = offerData.notes ?? offerData.funnel_notes ?? '';
+
+  let startDate = incoming.start_date || offerData.start_date || existingMeta.start_date || null;
+
+  // Se o usuário digitou "há X dias rodando", derivamos a data de início para
+  // que a contagem continue andando sozinha nos dias seguintes.
+  if (offerData.running_days != null && offerData.running_days !== '') {
+    const typedDays = Math.max(1, parseInt(offerData.running_days, 10) || 1);
+    startDate = daysToStartDate(typedDays);
+  }
+
+  // `status_manual` marca que o usuário fixou o estágio na mão; sem ele, o
+  // estágio é recalculado sozinho pelo tempo de veiculação.
+  const statusManual =
+    typeof offerData.status_manual === 'boolean'
+      ? offerData.status_manual
+      : existingMeta.status_manual;
+
+  return encodeNotes(notes, {
+    ...existingMeta,
+    ...incoming,
+    start_date: startDate,
+    status_manual: statusManual ? true : undefined
+  });
+}
 
 export const API_CONFIG = {
   USE_LOCAL: !isSupabaseConfigured,
@@ -383,22 +449,7 @@ export const api = {
       const { data, error } = await query;
       if (error) throw new Error(error.message || 'Erro ao listar ofertas.');
 
-      const formatted = (data || []).map((o) => {
-        let runningDays = 1;
-        if (o.funnel_notes) {
-          const match = o.funnel_notes.match(/Dias rodando:\s*(\d+)/i);
-          if (match) runningDays = parseInt(match[1], 10);
-        }
-
-        return {
-          ...o,
-          destination_url: o.landing_page || o.library_url,
-          notes: o.funnel_notes,
-          running_days: runningDays
-        };
-      });
-
-      return { offers: formatted };
+      return { offers: (data || []).map(formatOffer) };
     }
 
     const offers = storage.getOffers(tabId);
@@ -411,11 +462,6 @@ export const api = {
       if (!user) throw new Error('Não autenticado');
 
       const initialCount = Number(offerData.ads_count ?? offerData.initial_results ?? 1);
-      const runningDays = Number(offerData.running_days ?? 1);
-      const notes = offerData.notes || offerData.funnel_notes || '';
-      const notesWithDays = notes.includes('Dias rodando:')
-        ? notes
-        : `Dias rodando: ${runningDays}${notes ? ` | ${notes}` : ''}`;
 
       const payload = {
         user_id: user.id,
@@ -426,17 +472,13 @@ export const api = {
         library_url: offerData.library_url || '',
         landing_page: offerData.landing_page || offerData.destination_url || '',
         affiliate_link: offerData.affiliate_link || '',
-        funnel_notes: notesWithDays,
+        funnel_notes: buildNotesField(offerData),
         status: offerData.status || 'testing',
         niche: offerData.niche || 'Geral',
         avatar_url: offerData.avatar_url || null,
-        history: offerData.history || [
-          {
-            date: new Date().toISOString().split('T')[0],
-            count: initialCount,
-            ads_count: initialCount
-          }
-        ]
+        history: normalizeHistory(offerData.history).length
+          ? normalizeHistory(offerData.history).map((h) => historyEntry(h.date, h.count))
+          : [historyEntry(todayIso(), initialCount)]
       };
 
       const { data, error } = await supabase
@@ -447,14 +489,7 @@ export const api = {
 
       if (error) throw new Error(error.message || 'Erro ao salvar oferta.');
 
-      const formatted = {
-        ...data,
-        destination_url: data.landing_page,
-        notes: data.funnel_notes,
-        running_days: runningDays
-      };
-
-      return { message: 'Oferta salva com sucesso!', offer: formatted };
+      return { message: 'Oferta salva com sucesso!', offer: formatOffer(data) };
     }
 
     const offer = storage.createOffer(offerData);
@@ -464,9 +499,16 @@ export const api = {
   async updateOffer(id, offerData) {
     if (isSupabaseConfigured && supabase) {
       const initialCount = Number(offerData.ads_count ?? offerData.initial_results ?? 1);
-      const runningDays = Number(offerData.running_days ?? 1);
-      const notes = offerData.notes || offerData.funnel_notes || '';
-      const notesWithDays = `Dias rodando: ${runningDays}${notes ? ` | ${notes.replace(/Dias rodando:\s*\d+\s*\|\s*/i, '').replace(/Dias rodando:\s*\d+/i, '')}` : ''}`;
+
+      // Preserva os metadados já gravados (ID da biblioteca, origem da captura)
+      // que o formulário de edição não conhece.
+      const { data: current } = await supabase
+        .from('offers')
+        .select('funnel_notes')
+        .eq('id', id)
+        .single();
+
+      const existingMeta = decodeNotes(current?.funnel_notes).meta;
 
       const payload = {
         name: offerData.name,
@@ -475,7 +517,7 @@ export const api = {
         library_url: offerData.library_url || '',
         landing_page: offerData.landing_page || offerData.destination_url || '',
         affiliate_link: offerData.affiliate_link || '',
-        funnel_notes: notesWithDays,
+        funnel_notes: buildNotesField(offerData, existingMeta),
         status: offerData.status || 'testing',
         niche: offerData.niche || 'Geral',
         updated_at: new Date().toISOString()
@@ -483,7 +525,9 @@ export const api = {
 
       if (offerData.tab_id) payload.tab_id = offerData.tab_id;
       if (offerData.avatar_url) payload.avatar_url = offerData.avatar_url;
-      if (offerData.history) payload.history = offerData.history;
+      if (offerData.history) {
+        payload.history = normalizeHistory(offerData.history).map((h) => historyEntry(h.date, h.count));
+      }
 
       const { data, error } = await supabase
         .from('offers')
@@ -494,14 +538,7 @@ export const api = {
 
       if (error) throw new Error(error.message || 'Erro ao atualizar oferta.');
 
-      const formatted = {
-        ...data,
-        destination_url: data.landing_page,
-        notes: data.funnel_notes,
-        running_days: runningDays
-      };
-
-      return { message: 'Oferta atualizada com sucesso!', offer: formatted };
+      return { message: 'Oferta atualizada com sucesso!', offer: formatOffer(data) };
     }
 
     const offer = storage.updateOffer(id, offerData);
@@ -553,44 +590,96 @@ export const api = {
     return { message: 'Oferta duplicada com sucesso!', offer };
   },
 
-  async addMeasurement(offerId, date, adsCount) {
+  /**
+   * Registra (ou corrige) a contagem de anúncios ativos de um dia.
+   * É o que alimenta o gráfico de pirâmide da evolução da oferta.
+   */
+  async addDailyResult(offerId, adsCount, customDate = null) {
+    const date = customDate || todayIso();
+    const parsedCount = Math.max(0, Number(adsCount) || 0);
+
     if (isSupabaseConfigured && supabase) {
       const { data: offer, error: getErr } = await supabase
         .from('offers')
-        .select('history, ads_count')
+        .select('history, ads_count, status, funnel_notes')
         .eq('id', offerId)
         .single();
 
       if (getErr || !offer) throw new Error('Oferta não encontrada.');
 
-      let history = Array.isArray(offer.history) ? [...offer.history] : [];
-      const parsedCount = Number(adsCount) || 0;
+      const history = upsertHistory(offer.history, date, parsedCount);
+      const latest = history[history.length - 1];
 
-      const existingIndex = history.findIndex((h) => h.date === date);
-      if (existingIndex >= 0) {
-        history[existingIndex].count = parsedCount;
-      } else {
-        history.push({ date, count: parsedCount });
+      const patch = {
+        history,
+        updated_at: new Date().toISOString()
+      };
+
+      // `ads_count` reflete sempre a medição mais recente do histórico.
+      if (latest) patch.ads_count = latest.count;
+
+      // Reclassifica pelo tempo de veiculação, a menos que o usuário tenha
+      // fixado o estágio à mão no formulário.
+      const meta = decodeNotes(offer.funnel_notes).meta;
+      if (!meta.status_manual) {
+        patch.status = classifyStatus(resolveRunningDays(offer, meta));
       }
 
       const { data, error } = await supabase
         .from('offers')
-        .update({
-          history,
-          ads_count: parsedCount,
-          updated_at: new Date().toISOString()
-        })
+        .update(patch)
         .eq('id', offerId)
         .select()
         .single();
 
       if (error) throw new Error(error.message || 'Erro ao registrar medição.');
 
-      return { message: `Medição de ${date} atualizada para ${parsedCount} anúncios!`, offer: data };
+      return {
+        message: `Medição de ${date} atualizada para ${parsedCount} anúncios!`,
+        offer: formatOffer(data)
+      };
     }
 
-    const offer = storage.addMeasurement(offerId, date, adsCount);
-    return { message: `Medição de ${date} atualizada para ${adsCount} anúncios!`, offer };
+    const offer = storage.addDailyResult(offerId, parsedCount, date);
+    return { message: `Medição de ${date} atualizada para ${parsedCount} anúncios!`, offer };
+  },
+
+  /** Alias mantido para compatibilidade com chamadas antigas. */
+  async addMeasurement(offerId, date, adsCount) {
+    return this.addDailyResult(offerId, adsCount, date);
+  },
+
+  async deleteHistoryEntry(offerId, date) {
+    if (isSupabaseConfigured && supabase) {
+      const { data: offer, error: getErr } = await supabase
+        .from('offers')
+        .select('history')
+        .eq('id', offerId)
+        .single();
+
+      if (getErr || !offer) throw new Error('Oferta não encontrada.');
+
+      const history = normalizeHistory(offer.history)
+        .filter((h) => h.date !== date)
+        .map((h) => historyEntry(h.date, h.count));
+
+      const patch = { history, updated_at: new Date().toISOString() };
+      if (history.length) patch.ads_count = history[history.length - 1].count;
+
+      const { data, error } = await supabase
+        .from('offers')
+        .update(patch)
+        .eq('id', offerId)
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message || 'Erro ao remover medição.');
+
+      return { message: `Medição de ${date} removida.`, offer: formatOffer(data) };
+    }
+
+    const offer = storage.deleteHistoryEntry(offerId, date);
+    return { message: `Medição de ${date} removida.`, offer };
   },
 
   // ============================================================================
@@ -655,5 +744,135 @@ export const api = {
       throw new Error('Link de compartilhamento inválido ou expirado.');
     }
     return { share };
+  },
+
+  /**
+   * Conteúdo exibido na página pública de compartilhamento (somente leitura).
+   */
+  async publicOffers(token) {
+    const { share } = await this.getPublicShare(token);
+    return {
+      owner_name: share.owner_name || '',
+      tab_name: share.tab_name || 'Ofertas',
+      offers: (share.offers || []).map((offer) =>
+        offer.funnel_notes && !offer.meta ? formatOffer(offer) : offer
+      )
+    };
+  },
+
+  /**
+   * Gera o link público de uma tab tirando um retrato das ofertas do momento.
+   */
+  async createShareLink(tabId) {
+    if (isSupabaseConfigured && supabase) {
+      const { tabs } = await this.listTabs();
+      const tab = (tabs || []).find((t) => t.id === tabId);
+      const { offers } = await this.listOffers(tabId);
+
+      const res = await this.createShare(tabId, tab?.name || 'Geral', offers || []);
+      return { message: res.message, token: res.share.token };
+    }
+
+    const share = storage.createShareLink(tabId);
+    return { message: 'Link de compartilhamento gerado com sucesso!', token: share.token };
+  },
+
+  // ============================================================================
+  // BACKUP (EXPORTAR / IMPORTAR ACERVO)
+  // ============================================================================
+
+  async exportData() {
+    if (isSupabaseConfigured && supabase) {
+      const { tabs } = await this.listTabs();
+      const { offers } = await this.listOffers();
+
+      return JSON.stringify(
+        {
+          source: 'minerarads',
+          version: 2,
+          exported_at: new Date().toISOString(),
+          tabs: tabs || [],
+          offers: offers || []
+        },
+        null,
+        2
+      );
+    }
+
+    return storage.exportData();
+  },
+
+  async importData(jsonText) {
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch (e) {
+      throw new Error('Arquivo inválido: não é um JSON válido.');
+    }
+
+    const importedTabs = Array.isArray(parsed.tabs) ? parsed.tabs : [];
+    const importedOffers = Array.isArray(parsed.offers) ? parsed.offers : [];
+
+    if (!importedTabs.length && !importedOffers.length) {
+      throw new Error('Arquivo de backup vazio ou fora do formato do Mineraí.');
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Não autenticado');
+
+      // Recria as tabs pelo nome e mapeia os IDs antigos para os novos.
+      const { tabs: currentTabs } = await this.listTabs();
+      const tabIdMap = {};
+
+      for (const tab of importedTabs) {
+        const existing = (currentTabs || []).find(
+          (t) => t.name.toLowerCase() === String(tab.name || '').toLowerCase()
+        );
+        if (existing) {
+          tabIdMap[tab.id] = existing.id;
+        } else {
+          const res = await this.createTab({ name: tab.name || 'Importada' });
+          tabIdMap[tab.id] = res.tab.id;
+        }
+      }
+
+      const fallbackTabId = Object.values(tabIdMap)[0] || currentTabs?.[0]?.id || null;
+
+      const rows = importedOffers.map((offer) => {
+        const adsCount = Math.max(0, Number(offer.ads_count) || 0);
+        return {
+          user_id: user.id,
+          tab_id: tabIdMap[offer.tab_id] || fallbackTabId,
+          name: offer.name || 'Oferta Importada',
+          page_id: String(offer.page_id || ''),
+          ads_count: adsCount,
+          library_url: offer.library_url || '',
+          landing_page: offer.landing_page || offer.destination_url || '',
+          affiliate_link: offer.affiliate_link || '',
+          // Quando o backup já traz a data de início, ela vale mais do que o
+          // número de dias (que ficaria congelado na data da importação).
+          funnel_notes: buildNotesField({
+            ...offer,
+            running_days: offer.start_date ? undefined : offer.running_days
+          }),
+          status: offer.status || 'testing',
+          niche: offer.niche || 'Geral',
+          avatar_url: offer.avatar_url || null,
+          history: normalizeHistory(offer.history).length
+            ? normalizeHistory(offer.history).map((h) => historyEntry(h.date, h.count))
+            : [historyEntry(todayIso(), adsCount)]
+        };
+      });
+
+      if (rows.length) {
+        const { error } = await supabase.from('offers').insert(rows);
+        if (error) throw new Error(error.message || 'Erro ao importar ofertas.');
+      }
+
+      return { tabs: importedTabs, offers: importedOffers };
+    }
+
+    return storage.importData(jsonText);
   }
 };
