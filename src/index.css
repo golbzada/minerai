@@ -1026,6 +1026,12 @@ h1 em {
   padding-right: 32px;
 }
 
+/* Linha da categoria: fica logo abaixo do status, não ao lado dele */
+.badge-row.niche-row {
+  margin-top: -2px;
+  padding-right: 0;
+}
+
 .status-badge {
   display: inline-flex;
   align-items: center;
@@ -1100,13 +1106,16 @@ h1 em {
   color: var(--text-primary);
 }
 
+/* Deixa quebrar em vez de cortar: o ID vinha truncado no meio ("6158619…") */
 .page-id {
-  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
   margin: 4px 0 6px;
   color: var(--text-secondary);
   font-size: 0.68rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 /* Link direto para a página de vendas capturada pela extensão */

@@ -116,6 +116,9 @@ export default function OfferCard({
 
         <div className="content">
           <div>
+            {/* Status sozinho na primeira linha e categoria na linha de baixo:
+                lado a lado, a categoria empurrava o status e abria um vão
+                branco quando o nome era curto. */}
             <div className="badge-row">
               <span
                 className="status-badge"
@@ -127,22 +130,25 @@ export default function OfferCard({
               >
                 {statusCfg.label}
               </span>
-              {offer.niche && <span className="niche-badge">{offer.niche}</span>}
-              {offer.topic && offer.topic !== offer.niche && (
-                <span className="topic-badge" title="Tema identificado no texto do anúncio">
-                  {offer.topic}
-                </span>
-              )}
             </div>
+
+            {(offer.niche || offer.topic) && (
+              <div className="badge-row niche-row">
+                {offer.niche && <span className="niche-badge">{offer.niche}</span>}
+                {offer.topic && offer.topic !== offer.niche && (
+                  <span className="topic-badge" title="Tema identificado no texto do anúncio">
+                    {offer.topic}
+                  </span>
+                )}
+              </div>
+            )}
 
             <h2 title={offer.name}>{offer.name}</h2>
             <p className="page-id">
               <span title="Tempo de veiculação, atualizado automaticamente todo dia">
                 ⏳ {runningDays} {runningDays === 1 ? 'dia rodando' : 'dias rodando'}
               </span>
-              {' · '}
               <span title="Anúncios ativos na última medição">📊 {adsCount} ativos</span>
-              {' · '}
               <span
                 title={
                   advertiserId
@@ -150,7 +156,7 @@ export default function OfferCard({
                     : 'A Meta não expôs a identificação da página neste anúncio'
                 }
               >
-                ID {advertiserId || 'N/A'}
+                🆔 {advertiserId || 'N/A'}
               </span>
             </p>
             {hasSalesPage && (

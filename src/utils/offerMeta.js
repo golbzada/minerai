@@ -115,11 +115,22 @@ export function encodeNotes(notes, meta) {
 }
 
 /**
+ * Junta os metadados já decodificados (`offer.meta`) com os que ainda estão
+ * dentro de `funnel_notes`. Um `meta` parcial vindo de fora não pode apagar o
+ * que está gravado nas anotações — era o que fazia os dias rodando e o estágio
+ * discordarem entre si.
+ */
+function mergeMeta(offer, extra) {
+  const fromNotes = decodeNotes(offer?.funnel_notes ?? offer?.notes).meta;
+  return { ...fromNotes, ...(offer?.meta || {}), ...(extra || {}) };
+}
+
+/**
  * Dias rodando de uma oferta, sempre recalculados a partir da data de início
  * quando ela existe (por isso o número anda sozinho a cada dia).
  */
 export function resolveRunningDays(offer, meta) {
-  const info = meta || decodeNotes(offer?.funnel_notes ?? offer?.notes).meta;
+  const info = mergeMeta(offer, meta);
 
   const fromStart = startDateToDays(info.start_date);
   if (fromStart) return fromStart;
@@ -203,7 +214,7 @@ export function classifyStatus(runningDays) {
 export function resolveStatus(offer) {
   if (!offer) return 'testing';
 
-  const meta = offer.meta || decodeNotes(offer.funnel_notes ?? offer.notes).meta;
+  const meta = mergeMeta(offer);
   if (meta.status_manual && offer.status) return offer.status;
 
   return classifyStatus(resolveRunningDays(offer, meta));
