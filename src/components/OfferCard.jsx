@@ -21,12 +21,32 @@ export default function OfferCard({
   const salesPageUrl = offer.destination_url || offer.landing_page || '';
   const hasSalesPage = Boolean(salesPageUrl) && salesPageUrl !== libraryUrl;
 
-  const avatarUrl =
+  // A imagem principal do card é o CRIATIVO: é o que identifica a oferta de
+  // relance. A foto do anunciante vira um selo pequeno por cima.
+  // Páginas com apelido (facebook.com/lojaxyz) não expõem ID numérico no card.
+  // Nesses casos o apelido é a identificação disponível — e serve tanto para
+  // exibir quanto para buscar a foto no Graph.
+  const numericPageId =
+    offer.page_id && offer.page_id !== 'N/A' && offer.page_id !== '4' ? offer.page_id : null;
+  const advertiserId = numericPageId || offer.meta?.page_slug || null;
+  const graphKey = advertiserId;
+
+  const advertiserPhoto =
     offer.avatar_url ||
     offer.image_url ||
-    (offer.page_id && offer.page_id !== 'N/A' && offer.page_id !== '4'
-      ? `https://graph.facebook.com/${offer.page_id}/picture?type=large`
-      : null);
+    (graphKey ? `https://graph.facebook.com/${graphKey}/picture?type=large` : null);
+
+  const mainSources = [offer.creative_thumb, advertiserPhoto].filter(Boolean);
+
+  const [mainIndex, setMainIndex] = useState(0);
+  const mainImage = mainSources[mainIndex] || null;
+
+  // O selo só faz sentido quando a imagem grande é o criativo.
+  const showAdvertiserBadge = Boolean(
+    advertiserPhoto && mainImage && mainImage !== advertiserPhoto
+  );
+
+  const initial = (offer.name || '?').trim().charAt(0).toUpperCase();
 
   // Recalculado a partir da data de início: anda sozinho a cada dia.
   const runningDays = resolveRunningDays(offer);
@@ -68,10 +88,25 @@ export default function OfferCard({
           title="Abrir anúncio na Biblioteca de Anúncios da Meta"
         >
           <span className="index">{String(index + 1).padStart(2, '0')}</span>
-          {avatarUrl && (
+          {mainImage ? (
             <img
-              src={avatarUrl}
+              key={mainImage}
+              src={mainImage}
               alt={offer.name}
+              // Tenta a próxima fonte antes de desistir da imagem.
+              onError={() => setMainIndex((i) => i + 1)}
+            />
+          ) : (
+            <span className="photo-initial" aria-hidden="true">
+              {initial}
+            </span>
+          )}
+          {showAdvertiserBadge && (
+            <img
+              className="advertiser-badge"
+              src={advertiserPhoto}
+              alt=""
+              title={offer.name}
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
               }}
@@ -93,6 +128,11 @@ export default function OfferCard({
                 {statusCfg.label}
               </span>
               {offer.niche && <span className="niche-badge">{offer.niche}</span>}
+              {offer.topic && offer.topic !== offer.niche && (
+                <span className="topic-badge" title="Tema identificado no texto do anúncio">
+                  {offer.topic}
+                </span>
+              )}
             </div>
 
             <h2 title={offer.name}>{offer.name}</h2>
@@ -103,7 +143,15 @@ export default function OfferCard({
               {' · '}
               <span title="Anúncios ativos na última medição">📊 {adsCount} ativos</span>
               {' · '}
-              <span title="ID da página do anunciante na Meta">ID {offer.page_id || 'N/A'}</span>
+              <span
+                title={
+                  advertiserId
+                    ? `Identificação da página do anunciante na Meta: ${advertiserId}`
+                    : 'A Meta não expôs a identificação da página neste anúncio'
+                }
+              >
+                ID {advertiserId || 'N/A'}
+              </span>
             </p>
             {hasSalesPage && (
               <a

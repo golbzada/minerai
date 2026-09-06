@@ -55,10 +55,11 @@ export function getFbAvatarUrl(pageId) {
 export const STATUS_CONFIG = {
   winner: {
     key: 'winner',
+    // Laranja sólido com texto branco: é o selo de maior destaque do painel.
     label: 'Vencedor 🔥',
-    color: '#ff4d4d',
-    bg: '#ffe5e5',
-    border: '#ff9999'
+    color: '#ffffff',
+    bg: '#f97316',
+    border: '#ea580c'
   },
   scaling: {
     key: 'scaling',

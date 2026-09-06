@@ -30,6 +30,7 @@ function formatOffer(row) {
     history,
     start_date: meta.start_date || null,
     library_id: meta.library_id || null,
+    topic: meta.topic || null,
     destination_url: row.landing_page || row.library_url || '',
     running_days: resolveRunningDays(row, meta)
   };

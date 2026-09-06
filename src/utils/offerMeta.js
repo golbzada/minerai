@@ -182,7 +182,7 @@ export function upsertHistory(history, date, count) {
 export const STAGE_DAYS = {
   pre_scaling: 7,   // 1 a 6 dias   -> Em teste
   scaling: 20,      // 7 a 19 dias  -> Pré-escala
-  winner: 60        // 20 a 59 dias -> Escalando | 60+ -> Vencedor
+  winner: 70        // 20 a 69 dias -> Escalando | 70+ -> Vencedor
 };
 
 /** Estágio da oferta pelo tempo de veiculação. */

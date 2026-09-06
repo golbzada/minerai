@@ -17,7 +17,8 @@ export default function Toolbar({
   onExport,
   onImport,
   onNewOffer,
-  onOpenExtension
+  onOpenExtension,
+  availableNiches = NICHE_OPTIONS
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const fileInputRef = useRef(null);
@@ -178,7 +179,7 @@ export default function Toolbar({
             onChange={(e) => onNicheFilterChange(e.target.value)}
           >
             <option value="all">Todos os Nichos</option>
-            {NICHE_OPTIONS.map((n) => (
+            {availableNiches.map((n) => (
               <option key={n} value={n}>
                 {n}
               </option>

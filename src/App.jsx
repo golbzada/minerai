@@ -15,6 +15,7 @@ import PublicShare from './components/PublicShare';
 import { api } from './services/api';
 import { supabase, isSupabaseConfigured } from './services/supabaseClient';
 import { resolveStatus } from './utils/offerMeta';
+import { NICHE_OPTIONS } from './utils/metaParser';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(undefined);
@@ -172,6 +173,13 @@ export default function App() {
 
     return result;
   }, [offers, searchQuery, statusFilter, nicheFilter, minAdsFilter, sortBy]);
+
+  // Nichos do seletor: os fixos mais os personalizados já usados, para que
+  // uma categoria criada na mão continue filtrável.
+  const availableNiches = useMemo(() => {
+    const used = offers.map((o) => o.niche).filter(Boolean);
+    return Array.from(new Set([...NICHE_OPTIONS, ...used]));
+  }, [offers]);
 
   // Actions
   async function handleSaveOffer(offerData) {
@@ -401,6 +409,7 @@ export default function App() {
         onImport={handleImportBackup}
         onNewOffer={() => setEditingOffer(null)}
         onOpenExtension={() => setIsExtensionModalOpen(true)}
+        availableNiches={availableNiches}
       />
 
       {feedbackNotice && (
