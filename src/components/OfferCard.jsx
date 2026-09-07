@@ -28,8 +28,17 @@ export default function OfferCard({
   // exibir quanto para buscar a foto no Graph.
   const numericPageId =
     offer.page_id && offer.page_id !== 'N/A' && offer.page_id !== '4' ? offer.page_id : null;
-  // Para buscar a foto serve o apelido também; para EXIBIR, só o ID numérico.
-  const graphKey = numericPageId || offer.meta?.page_slug || null;
+  const pageSlug = offer.meta?.page_slug || null;
+  const graphKey = numericPageId || pageSlug || null;
+
+  // O que mostrar na linha do ID. Ela nunca fica vazia: o ID numérico quando
+  // existe, senão o apelido da página (que é o identificador dela no Facebook,
+  // mesmo não sendo número) e, em último caso, um travessão.
+  const identificacao = numericPageId
+    ? { texto: numericPageId, titulo: `Identificação da página do anunciante na Meta: ${numericPageId}` }
+    : pageSlug
+      ? { texto: pageSlug, titulo: `A Meta não expôs o número da página; o identificador dela é o apelido "${pageSlug}"` }
+      : { texto: '—', titulo: 'A Meta não expôs a identificação da página neste anúncio' };
 
   const advertiserPhoto =
     offer.avatar_url ||
@@ -137,16 +146,12 @@ export default function OfferCard({
               <span title="Anúncios ativos na última medição">📊 {adsCount} ativos</span>
             </p>
 
-            {/* O ID fica sempre na linha de baixo, nunca ao lado dos dias, e só
-                aparece quando é número mesmo: apelido de página repetiria o
-                nome do anunciante que já está logo acima. */}
-            {numericPageId && (
-              <p className="page-id page-id-line">
-                <span title={`Identificação da página do anunciante na Meta: ${numericPageId}`}>
-                  🆔 {numericPageId}
-                </span>
-              </p>
-            )}
+            {/* O ID fica SEMPRE nesta linha, nunca ao lado dos dias. Some ela
+                num card só e ele fica mais curto que os vizinhos da grade,
+                abrindo uma faixa branca embaixo do gráfico. */}
+            <p className="page-id page-id-line">
+              <span title={identificacao.titulo}>🆔 {identificacao.texto}</span>
+            </p>
             {hasSalesPage && (
               <a
                 className="sales-page-link"

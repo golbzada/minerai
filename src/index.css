@@ -1212,7 +1212,12 @@ h1 em {
   margin: 0;
 }
 
+/* Coluna flexível: numa mesma linha da grade os cards têm a mesma altura, e
+   sem isso o card de conteúdo mais curto deixava uma faixa branca embaixo do
+   gráfico. Com o gráfico esticando, a sobra é preenchida pelo fundo dele. */
 .offer-item {
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--border-default);
   border-radius: 20px;
@@ -1261,6 +1266,7 @@ h1 em {
 }
 
 .tracker {
+  flex: 1 1 auto;
   padding: 12px 14px 10px;
   border-top: 1px solid var(--border-default);
   background: var(--bg-card-alt);
