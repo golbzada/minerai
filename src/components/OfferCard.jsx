@@ -28,8 +28,8 @@ export default function OfferCard({
   // exibir quanto para buscar a foto no Graph.
   const numericPageId =
     offer.page_id && offer.page_id !== 'N/A' && offer.page_id !== '4' ? offer.page_id : null;
-  const advertiserId = numericPageId || offer.meta?.page_slug || null;
-  const graphKey = advertiserId;
+  // Para buscar a foto serve o apelido também; para EXIBIR, só o ID numérico.
+  const graphKey = numericPageId || offer.meta?.page_slug || null;
 
   const advertiserPhoto =
     offer.avatar_url ||
@@ -135,16 +135,18 @@ export default function OfferCard({
                 ⏳ {runningDays} {runningDays === 1 ? 'dia rodando' : 'dias rodando'}
               </span>
               <span title="Anúncios ativos na última medição">📊 {adsCount} ativos</span>
-              <span
-                title={
-                  advertiserId
-                    ? `Identificação da página do anunciante na Meta: ${advertiserId}`
-                    : 'A Meta não expôs a identificação da página neste anúncio'
-                }
-              >
-                🆔 {advertiserId || 'N/A'}
-              </span>
             </p>
+
+            {/* O ID fica sempre na linha de baixo, nunca ao lado dos dias, e só
+                aparece quando é número mesmo: apelido de página repetiria o
+                nome do anunciante que já está logo acima. */}
+            {numericPageId && (
+              <p className="page-id page-id-line">
+                <span title={`Identificação da página do anunciante na Meta: ${numericPageId}`}>
+                  🆔 {numericPageId}
+                </span>
+              </p>
+            )}
             {hasSalesPage && (
               <a
                 className="sales-page-link"

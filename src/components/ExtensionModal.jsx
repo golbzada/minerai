@@ -35,7 +35,7 @@ export default function ExtensionModal({ onClose }) {
             </div>
             <div>
               <p className="eyebrow">OFICIAL MINERAÍ</p>
-              <h2 style={{ fontSize: '1.25rem' }}>Instalação da Extensão Meta Ads</h2>
+              <h2 style={{ fontSize: '1.25rem' }}>Instalação da Extensão Mineraí</h2>
             </div>
           </div>
           <button className="modal-close-btn" type="button" onClick={onClose} aria-label="Fechar">

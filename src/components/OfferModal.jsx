@@ -37,19 +37,28 @@ export default function OfferModal({ offer, onClose, onSave }) {
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [previewAvatar, setPreviewAvatar] = useState(() => {
-    if (offer?.page_id && offer.page_id !== 'N/A' && offer.page_id !== '4') {
-      return getFbAvatarUrl(offer.page_id);
-    }
-    return null;
-  });
+  // ID numérico real da página. O '4' é o valor de descarte de
+  // extractPageIdFromUrl (e por acaso é uma página real do Facebook), então
+  // ele nunca pode virar ID exibido nem endereço de foto.
+  const paginaId =
+    offer?.page_id && offer.page_id !== 'N/A' && offer.page_id !== '4' ? offer.page_id : null;
+
+  const [previewAvatar, setPreviewAvatar] = useState(
+    // A foto já gravada é a real; o Graph é palpite e devolve silhueta em
+    // parte das páginas — era a bolinha vazia que aparecia aqui.
+    () => offer?.avatar_url || (paginaId ? getFbAvatarUrl(paginaId) : null)
+  );
+  const [avatarFalhou, setAvatarFalhou] = useState(false);
 
   function handleLibraryUrlChange(url) {
     setFormData((prev) => ({ ...prev, library_url: url }));
-    if (url.trim()) {
+
+    // Só arrisca o palpite pela URL quando não há foto gravada para mostrar.
+    if (url.trim() && !offer?.avatar_url) {
       const pageId = extractPageIdFromUrl(url);
       if (pageId && pageId !== '4') {
         setPreviewAvatar(getFbAvatarUrl(pageId));
+        setAvatarFalhou(false);
       }
     }
   }
@@ -120,16 +129,18 @@ export default function OfferModal({ offer, onClose, onSave }) {
           </button>
         </div>
 
-        {previewAvatar && (
+        {previewAvatar && !avatarFalhou && (
           <div className="avatar-preview-box">
+            {/* Se a imagem não carregar, o bloco inteiro some — antes ficava
+                a borda da foto sozinha, parecendo um card quebrado. */}
             <img
               src={previewAvatar}
-              alt="Avatar Anunciante"
-              onError={(e) => (e.currentTarget.style.display = 'none')}
+              alt="Foto do anunciante"
+              onError={() => setAvatarFalhou(true)}
             />
             <div>
-              <strong>Logo do Anunciante Meta Detectado</strong>
-              <small>ID da Página: {extractPageIdFromUrl(formData.library_url)}</small>
+              <strong>Anunciante</strong>
+              {paginaId && <small>ID da página: {paginaId}</small>}
             </div>
           </div>
         )}

@@ -1098,11 +1098,16 @@ h1 em {
   display: flex;
   flex-wrap: wrap;
   gap: 2px 6px;
-  margin: 4px 0 6px;
+  margin: 4px 0 2px;
   color: var(--text-secondary);
   font-size: 0.68rem;
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+/* Linha própria do ID, sempre abaixo dos dias — nunca ao lado */
+.page-id-line {
+  margin: 0 0 6px;
 }
 
 /* Link direto para a página de vendas capturada pela extensão */
