@@ -36,15 +36,12 @@ export default function OfferCard({
     offer.image_url ||
     (graphKey ? `https://graph.facebook.com/${graphKey}/picture?type=large` : null);
 
+  // Só o criativo. A foto do anunciante fica de reserva para a oferta que
+  // ainda não tem criativo salvo — sobreposta ao frame ela poluía o card.
   const mainSources = [offer.creative_thumb, advertiserPhoto].filter(Boolean);
 
   const [mainIndex, setMainIndex] = useState(0);
   const mainImage = mainSources[mainIndex] || null;
-
-  // O selo só faz sentido quando a imagem grande é o criativo.
-  const showAdvertiserBadge = Boolean(
-    advertiserPhoto && mainImage && mainImage !== advertiserPhoto
-  );
 
   const initial = (offer.name || '?').trim().charAt(0).toUpperCase();
 
@@ -100,17 +97,6 @@ export default function OfferCard({
             <span className="photo-initial" aria-hidden="true">
               {initial}
             </span>
-          )}
-          {showAdvertiserBadge && (
-            <img
-              className="advertiser-badge"
-              src={advertiserPhoto}
-              alt=""
-              title={offer.name}
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-              }}
-            />
           )}
         </a>
 
