@@ -2095,3 +2095,114 @@ h1 em {
   place-items: center;
   background: var(--bg-page);
 }
+
+/* =========================================================
+   MODELAR PÁGINA
+   ========================================================= */
+
+.modelar-modal {
+  max-width: 560px;
+}
+
+.modelar-intro {
+  margin: 0 0 14px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.modelar-alerta {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  background: #FEF3C7;
+  border: 1px solid #FCD34D;
+  border-radius: 12px;
+  color: #92400E;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.modelar-alerta strong {
+  font-size: 0.8rem;
+}
+
+.modelar-form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.modelar-campo {
+  flex: 1 1 260px;
+  min-width: 0;
+  height: 44px;
+  padding: 0 14px;
+  border: 1.5px solid var(--border-default);
+  border-radius: 12px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.modelar-campo:focus {
+  border-color: var(--gold-dark);
+  box-shadow: 0 0 0 3px rgba(232, 184, 75, 0.22);
+}
+
+.modelar-campo:disabled {
+  opacity: 0.65;
+}
+
+.modelar-status {
+  margin: 12px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.modelar-status.erro {
+  color: #991B1B;
+}
+
+.modelar-resultado {
+  margin-top: 14px;
+  padding: 14px;
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.modelar-resultado strong {
+  color: #166534;
+}
+
+.modelar-resultado p,
+.modelar-resultado ul {
+  margin: 6px 0;
+}
+
+.modelar-resultado ul {
+  padding-left: 18px;
+}
+
+.modelar-resultado code {
+  padding: 1px 5px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: 5px;
+  font-size: 0.72rem;
+}
+
+.modelar-resultado small {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}

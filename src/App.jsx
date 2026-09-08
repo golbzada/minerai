@@ -10,6 +10,7 @@ import ResultModal from './components/ResultModal';
 import HistoryModal from './components/HistoryModal';
 import TabModal from './components/TabModal';
 import ExtensionModal from './components/ExtensionModal';
+import ModelarModal from './components/ModelarModal';
 import AuthPage from './components/AuthPage';
 import PublicShare from './components/PublicShare';
 import { api } from './services/api';
@@ -40,6 +41,7 @@ export default function App() {
   const [historyTargetOffer, setHistoryTargetOffer] = useState(null);
   const [isTabModalOpen, setIsTabModalOpen] = useState(false);
   const [isExtensionModalOpen, setIsExtensionModalOpen] = useState(false);
+  const [isModelarOpen, setIsModelarOpen] = useState(false);
   const [feedbackNotice, setFeedbackNotice] = useState('');
   const [isSharing, setIsSharing] = useState(false);
 
@@ -409,6 +411,7 @@ export default function App() {
         onImport={handleImportBackup}
         onNewOffer={() => setEditingOffer(null)}
         onOpenExtension={() => setIsExtensionModalOpen(true)}
+        onOpenModelar={() => setIsModelarOpen(true)}
         availableNiches={availableNiches}
       />
 
@@ -454,6 +457,8 @@ export default function App() {
       )}
 
       {/* Modals */}
+      {isModelarOpen && <ModelarModal onClose={() => setIsModelarOpen(false)} />}
+
       {isExtensionModalOpen && (
         <ExtensionModal
           onClose={() => setIsExtensionModalOpen(false)}

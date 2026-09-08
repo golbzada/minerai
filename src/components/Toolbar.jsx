@@ -18,6 +18,7 @@ export default function Toolbar({
   onImport,
   onNewOffer,
   onOpenExtension,
+  onOpenModelar,
   availableNiches = NICHE_OPTIONS
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -77,7 +78,17 @@ export default function Toolbar({
             🧩 Extensão
           </button>
 
-          {/* 2. Menu Dropdown com Compartilhar, Exportar e Importar */}
+          {/* 2. Modelar Página: baixa a estrutura de uma página de referência */}
+          <button
+            className="install-extension modelar-trigger"
+            type="button"
+            onClick={onOpenModelar}
+            title="Baixar a estrutura e o design system de uma página para modelar"
+          >
+            📐 Modelar
+          </button>
+
+          {/* 3. Menu Dropdown com Compartilhar, Exportar e Importar */}
           <div className="toolbar-menu-wrapper" ref={menuRef}>
             <button
               className={`toolbar-menu-btn ${isMenuOpen ? 'active' : ''}`}
