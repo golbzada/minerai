@@ -122,12 +122,17 @@ export default function ModelarModal({ onClose, urlInicial = '' }) {
           (cores, fontes, espaçamentos) para modelar a sua em cima.
         </p>
 
+        {/* Aviso informativo, nunca bloqueante: a extensão pode estar
+            instalada e não ter respondido ao ping (por exemplo, se a página
+            foi aberta antes de a extensão ser atualizada). Deixar tentar é
+            melhor do que travar o botão por um palpite errado. */}
         {temExtensao === false && (
           <div className="modelar-alerta">
-            <strong>Extensão necessária</strong>
+            <strong>Não consegui falar com a extensão</strong>
             <span>
-              A captura roda pela extensão do Mineraí, no seu próprio navegador — por isso não
-              tem custo nem servidor no meio. Instale a extensão e recarregue esta página.
+              A captura roda pela extensão do Mineraí, no seu navegador — por isso não tem custo
+              nem servidor no meio. Se ela já está instalada, recarregue esta página (F5). Pode
+              tentar mesmo assim, às vezes ela só demorou a responder.
             </span>
           </div>
         )}
@@ -142,11 +147,7 @@ export default function ModelarModal({ onClose, urlInicial = '' }) {
             disabled={estado === 'capturando'}
             autoFocus
           />
-          <button
-            className="primary"
-            type="submit"
-            disabled={estado === 'capturando' || temExtensao === false}
-          >
+          <button className="primary" type="submit" disabled={estado === 'capturando'}>
             {estado === 'capturando' ? 'Capturando...' : '📐 Baixar estrutura'}
           </button>
         </form>
@@ -157,21 +158,26 @@ export default function ModelarModal({ onClose, urlInicial = '' }) {
 
         {estado === 'ok' && resultado && (
           <div className="modelar-resultado">
-            <strong>Pronto!</strong>
+            <strong>Pronto! O download já começou.</strong>
             <p>
-              Salvo em <code>Downloads/{resultado.pasta}</code>
+              <code>Downloads/{resultado.pasta}</code>
+              {resultado.tamanhoZipKb ? ` — ${resultado.tamanhoZipKb} KB` : ''}
             </p>
             <ul>
               <li>
-                <code>pagina.html</code> — a estrutura, {resultado.tamanhoHtmlKb} KB
+                <code>index.html</code> — a página, {resultado.tamanhoHtmlKb} KB, com todo o CSS
+                embutido
               </li>
               <li>
                 <code>design-system.css</code> — {resultado.cores} cores, fontes e espaçamentos
               </li>
+              <li>
+                <code>LEIA-ME.txt</code> — o que tem no pacote e como usar
+              </li>
             </ul>
             <small>
-              {resultado.folhasInternas + resultado.folhasExternas} folhas de estilo embutidas no
-              arquivo. Abra o <code>pagina.html</code> no navegador para conferir.
+              {resultado.folhasInternas + resultado.folhasExternas} folhas de estilo embutidas.
+              Descompacte e abra o <code>index.html</code> no navegador.
             </small>
           </div>
         )}
