@@ -179,6 +179,20 @@ export default function ModelarModal({ onClose, urlInicial = '' }) {
               {resultado.folhasInternas + resultado.folhasExternas} folhas de estilo embutidas.
               Descompacte e abra o <code>index.html</code> no navegador.
             </small>
+
+            <div className="modelar-dica">
+              <strong>Veio alguma parte quebrada?</strong>
+              <p>
+                É normal em página muito dependente de script. Jogue a pasta na IA que você usa
+                para montar página e peça algo como:
+              </p>
+              <p className="modelar-prompt">
+                “Esta pasta é a captura de uma página de vendas, para servir de referência de
+                estrutura. Conserte o que estiver quebrado e reorganize o layout mantendo os
+                mesmos blocos, proporções e o design system do <code>design-system.css</code>.
+                Depois troque os textos e imagens pelos meus.”
+              </p>
+            </div>
           </div>
         )}
 

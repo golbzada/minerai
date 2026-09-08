@@ -2206,3 +2206,30 @@ h1 em {
   color: var(--text-secondary);
   font-size: 0.7rem;
 }
+
+/* Dica de "veio quebrado? peça pra IA formatar" */
+.modelar-dica {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-default);
+}
+
+.modelar-dica strong {
+  color: var(--text-primary);
+  font-size: 0.76rem;
+}
+
+.modelar-dica p {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.73rem;
+  line-height: 1.5;
+}
+
+.modelar-prompt {
+  padding: 9px 11px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  font-style: italic;
+}
