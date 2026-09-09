@@ -312,7 +312,7 @@ export default function App() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `minerarads_backup_${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `minerai_backup_${new Date().toISOString().split('T')[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
       setFeedbackNotice('Backup do acervo exportado com sucesso!');

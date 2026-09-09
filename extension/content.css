@@ -1,0 +1,726 @@
+/* ==============================================================================
+   MINERAÍ EXTENSÃO - FOLHA DE ESTILOS DO CONTENT SCRIPT
+   Identidade Visual: Ouro Metálico + Preto + Creme (#FDF8ED)
+   ============================================================================== */
+
+:root {
+  --minerai-gold-gradient: linear-gradient(135deg, #F7E4A8 0%, #E8B84B 45%, #C4922C 100%);
+  --minerai-gold-soft: linear-gradient(135deg, #FDF8ED 0%, #F5E5BE 45%, #DFB45E 100%);
+  --minerai-gold-primary: #E8B84B;
+  --minerai-gold-dark: #C4922C;
+  --minerai-bg-card: #FDF8ED;
+  --minerai-text-dark: #1A1A1A;
+  --minerai-text-muted: #666053;
+  --minerai-border: #E4DFCF;
+  --minerai-border-strong: #1A1A1A;
+  --minerai-shadow: 0 10px 30px rgba(26, 26, 26, 0.16), 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* ==============================================================================
+   PAINEL FLUTUANTE ARRASTÁVEL ("Filtros Mineraí")
+   ============================================================================== */
+
+#minerai-floating-panel {
+  position: fixed;
+  top: 80px;
+  right: 24px;
+  width: 300px;
+  background: var(--minerai-bg-card);
+  border: 2px solid #E8B84B;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22), 0 0 0 1px #C4922C;
+  z-index: 2147483647;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--minerai-text-dark);
+  user-select: none;
+  transition: box-shadow 0.2s ease;
+  overflow: hidden;
+}
+
+.minerai-card-filtered-out {
+  display: none !important;
+}
+
+#minerai-floating-panel.dragging {
+  opacity: 0.92;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+}
+
+/* Cabeçalho do Painel (Alça de Arraste) */
+.minerai-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: #FFFFFF;
+  border-bottom: 1.5px solid var(--minerai-border);
+  cursor: grab;
+}
+
+.minerai-panel-header:active {
+  cursor: grabbing;
+}
+
+.minerai-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.minerai-logo-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  background: #1A1A1A;
+  border: 1.5px solid #E8B84B;
+  border-radius: 7px;
+  color: #F7E4A8;
+  font-weight: 900;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.minerai-header-titles {
+  display: flex;
+  flex-direction: column;
+}
+
+.minerai-header-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--minerai-text-dark);
+  letter-spacing: -0.01em;
+}
+
+.minerai-header-sub {
+  font-size: 9.5px;
+  color: var(--minerai-text-muted);
+  font-weight: 600;
+}
+
+.minerai-min-btn {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid var(--minerai-border);
+  border-radius: 6px;
+  color: var(--minerai-text-dark);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+
+.minerai-min-btn:hover {
+  background: #1A1A1A;
+  color: #FFFFFF;
+  border-color: #1A1A1A;
+}
+
+/* Corpo do Painel */
+.minerai-panel-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+  max-height: 600px;
+  opacity: 1;
+}
+
+#minerai-floating-panel.minimized .minerai-panel-body {
+  display: none;
+}
+
+/* Status de Autenticação */
+.minerai-auth-badge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #FFFFFF;
+  border: 1px solid var(--minerai-border);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.minerai-auth-badge.online {
+  border-color: #A3E635;
+  background: #F7FEE7;
+  color: #365314;
+}
+
+.minerai-auth-badge.offline {
+  border-color: #FECACA;
+  background: #FEF2F2;
+  color: #991B1B;
+}
+
+.minerai-auth-badge a {
+  color: #1A1A1A;
+  text-decoration: underline;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* Campos e Filtros */
+.minerai-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.minerai-field-group label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--minerai-text-dark);
+}
+
+.minerai-field-group input[type="number"], .minerai-field-group input[type="text"] {
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1.5px solid var(--minerai-border);
+  background: #FFFFFF;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--minerai-text-dark);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.minerai-field-group input[type="number"]:focus, .minerai-field-group input[type="text"]:focus {
+  border-color: var(--minerai-gold-dark);
+  box-shadow: 0 0 0 2px rgba(232, 184, 75, 0.25);
+}
+
+.minerai-field-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.minerai-search-counter {
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #92400E;
+  background: #FEF3C7;
+  border: 1px solid #FDE68A;
+  border-radius: 99px;
+  padding: 1px 7px;
+}
+
+.minerai-term-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.minerai-term-input-wrapper input[type="text"] {
+  width: 100%;
+  padding-right: 76px !important;
+}
+
+.minerai-term-nav-btns {
+  position: absolute;
+  right: 5px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.minerai-term-nav-btns button {
+  width: 21px;
+  height: 23px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #F4EFE0;
+  border: 1px solid var(--minerai-border);
+  border-radius: 4px;
+  color: var(--minerai-text-dark);
+  font-size: 9.5px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.minerai-term-nav-btns button:hover {
+  background: #E8B84B;
+  color: #1A1A1A;
+}
+
+/* Destaque Dourado dos Textos no Card (Ctrl+F) */
+mark.minerai-term-highlight {
+  background: #FDE68A !important;
+  color: #78350F !important;
+  border-radius: 3px !important;
+  padding: 1px 3px !important;
+  font-weight: 800 !important;
+  box-shadow: 0 0 0 1px #F59E0B !important;
+  transition: all 0.15s ease !important;
+}
+
+mark.minerai-term-highlight.minerai-term-active {
+  background: #F59E0B !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 0 0 2px #B45309, 0 0 12px rgba(245, 158, 11, 0.85) !important;
+  transform: scale(1.06) !important;
+  display: inline-block !important;
+}
+
+.minerai-field-helper {
+  font-size: 9.5px;
+  color: var(--minerai-text-muted);
+  font-style: italic;
+}
+
+/* Chips de Atalho de Dias */
+.minerai-presets-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.minerai-preset-chip {
+  padding: 2px 7px;
+  background: #FFFFFF;
+  border: 1px solid var(--minerai-border);
+  border-radius: 6px;
+  font-size: 9.5px;
+  font-weight: 800;
+  color: var(--minerai-text-dark);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.minerai-preset-chip:hover, .minerai-preset-chip.active {
+  background: #1A1A1A;
+  color: #F7E4A8;
+  border-color: #1A1A1A;
+}
+
+/* Caixa de Dica Inteligente de Escala (40-50 dias) */
+.minerai-tip-box {
+  padding: 8px 10px;
+  background: #FFFBEB;
+  border: 1px solid #FDE68A;
+  border-radius: 8px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: #92400E;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: mineraiFadeIn 0.2s ease;
+}
+
+.minerai-tip-box strong {
+  color: #78350F;
+  font-weight: 800;
+}
+
+@keyframes mineraiFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Botões do Painel */
+.minerai-btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 40px;
+  background: var(--minerai-gold-gradient);
+  border: 1px solid var(--minerai-border-strong);
+  border-radius: 10px;
+  color: #1A1A1A;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 3px 8px rgba(232, 184, 75, 0.28);
+  transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
+}
+
+.minerai-btn-primary:hover {
+  transform: translateY(-1px);
+  opacity: 0.96;
+  box-shadow: 0 4px 12px rgba(232, 184, 75, 0.4);
+}
+
+.minerai-btn-primary:active {
+  transform: translateY(1px);
+}
+
+.minerai-btn-primary.active-pulse {
+  animation: mineraiPulse 0.4s ease;
+}
+
+@keyframes mineraiPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.96); }
+  100% { transform: scale(1); }
+}
+
+/* Rodapé com Contador de Resultados */
+.minerai-panel-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: #FFFFFF;
+  border-radius: 8px;
+  border: 1px solid var(--minerai-border);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--minerai-text-muted);
+}
+
+.minerai-counter-num {
+  color: var(--minerai-gold-dark);
+  font-weight: 900;
+  font-size: 12px;
+}
+
+/* ==============================================================================
+   DESTAQUE DOURADO NO RETÂNGULO DO CARD DE ANÚNCIO (OFERTA VALIDADA / ESCALA)
+   ============================================================================== */
+
+.minerai-card-winner {
+  border: 3px solid #E8B84B !important;
+  outline: 2px solid rgba(232, 184, 75, 0.5) !important;
+  outline-offset: 1px !important;
+  box-shadow: 0 0 0 1px #E8B84B, 0 8px 30px rgba(232, 184, 75, 0.45) !important;
+  border-radius: 14px !important;
+  transition: all 0.2s ease !important;
+  position: relative !important;
+}
+
+.minerai-card-winner:hover {
+  box-shadow: 0 8px 30px rgba(232, 184, 75, 0.48) !important;
+}
+
+/* ==============================================================================
+   BARRA INJETADA MINERAÍ DENTRO DE CADA CARD DO META ADS
+   ============================================================================== */
+
+/* A barra é organizada em três linhas fixas:
+   1) métricas (tempo rodando / anúncios ativos / estágio)
+   2) anunciante e link da página de vendas
+   3) ações (baixar mídia / minerar oferta)                                   */
+
+.minerai-card-injected-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px;
+  margin: 8px 0;
+  border-radius: 10px;
+  background: #FDF8ED;
+  border: 1px solid #E8B84B;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 2px 6px rgba(0, 0, 0, 0.05);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  box-sizing: border-box;
+}
+
+.minerai-bar-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.minerai-bar-target {
+  justify-content: space-between;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(196, 146, 44, 0.35);
+}
+
+/* Linha dos links: página de vendas + permalink do anúncio na Biblioteca */
+.minerai-bar-links {
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.minerai-niche {
+  flex-shrink: 0;
+  max-width: 50%;
+  overflow: hidden;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: #F1ECDF;
+  color: #6B6250;
+  font-size: 10.5px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.minerai-ad-link {
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  color: #6B6250 !important;
+  font-size: 11px;
+  font-weight: 800;
+  text-decoration: none !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(107, 98, 80, 0.35);
+}
+
+.minerai-ad-link:hover {
+  color: #1A1A1A !important;
+  border-bottom-color: #1A1A1A;
+}
+
+.minerai-card-actions {
+  justify-content: stretch;
+  gap: 6px;
+}
+
+/* ---------- Pílulas de métrica ---------- */
+
+.minerai-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 800;
+  border: 1px solid transparent;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.minerai-pill-icon {
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* Tempo de veiculação em três faixas de cor:
+   azul = até 19 dias | amarelo = 20 a 49 | verde = 50 dias ou mais */
+.minerai-pill.running-days.days-blue {
+  background: #DBEAFE;
+  color: #1D4ED8;
+  border-color: #BFDBFE;
+}
+
+.minerai-pill.running-days.days-yellow {
+  background: #FEF3C7;
+  color: #92400E;
+  border-color: #FDE68A;
+}
+
+.minerai-pill.running-days.days-green {
+  background: #DCFCE7;
+  color: #166534;
+  border-color: #BBF7D0;
+  font-weight: 900;
+}
+
+.minerai-pill.creatives {
+  background: #1A1A1A;
+  color: #F7E4A8;
+  border-color: #1A1A1A;
+}
+
+/* Estágio estimado da oferta (mesmas cores usadas no painel) */
+.minerai-pill.stage {
+  margin-left: auto;
+}
+
+.minerai-pill.stage-testing {
+  background: #DEEBFF;
+  color: #0052CC;
+  border-color: #B3D4FF;
+}
+
+.minerai-pill.stage-pre_scaling {
+  background: #FEF3C7;
+  color: #B45309;
+  border-color: #FCD34D;
+}
+
+.minerai-pill.stage-scaling {
+  background: #E3FCEF;
+  color: #00875A;
+  border-color: #ABF5D1;
+}
+
+/* Vencedor (70+ dias): laranja sólido com texto branco, para destacar */
+.minerai-pill.stage-winner {
+  background: #F97316;
+  color: #FFFFFF;
+  border-color: #EA580C;
+  font-weight: 900;
+}
+
+/* ---------- Anunciante e página de vendas ---------- */
+
+.minerai-advertiser {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: #4A4438;
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.minerai-landing-link {
+  flex-shrink: 0;
+  max-width: 55%;
+  overflow: hidden;
+  color: #92400E !important;
+  font-size: 11px;
+  font-weight: 800;
+  text-decoration: none !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(146, 64, 14, 0.4);
+}
+
+.minerai-landing-link:hover {
+  color: #1A1A1A !important;
+  border-bottom-color: #1A1A1A;
+}
+
+.minerai-landing-missing {
+  flex-shrink: 0;
+  color: #9C9484;
+  font-size: 11px;
+  font-weight: 700;
+  font-style: italic;
+}
+
+/* ---------- Botões de ação ---------- */
+
+.minerai-btn-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.minerai-btn-text {
+  line-height: 1;
+}
+
+.minerai-download-btn,
+.minerai-capture-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.minerai-download-btn {
+  flex: 1 1 40%;
+  background: #FFFFFF;
+  border: 1px solid #D4CEBE;
+  color: #1A1A1A;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.minerai-download-btn:hover {
+  background: #FAF8F2;
+  border-color: #C4922C;
+  color: #92400E;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.minerai-download-btn:active {
+  transform: translateY(1px);
+}
+
+.minerai-download-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+  transform: none;
+}
+
+.minerai-capture-btn {
+  flex: 1 1 55%;
+  background: var(--minerai-gold-gradient);
+  border: 1px solid var(--minerai-border-strong);
+  color: #1A1A1A;
+  box-shadow: 0 2px 5px rgba(232, 184, 75, 0.3);
+}
+
+.minerai-capture-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(232, 184, 75, 0.45);
+}
+
+.minerai-capture-btn:active {
+  transform: translateY(1px);
+}
+
+.minerai-capture-btn:disabled {
+  opacity: 0.75;
+  cursor: wait;
+  transform: none;
+}
+
+.minerai-capture-btn.mined-success {
+  background: #10B981 !important;
+  color: #FFFFFF !important;
+  border-color: #059669 !important;
+}
+
+.minerai-capture-btn.mined-error {
+  background: #EF4444 !important;
+  color: #FFFFFF !important;
+  border-color: #DC2626 !important;
+}
+/* ==============================================================================
+   TOAST DE NOTIFICAÇÃO
+   ============================================================================== */
+
+.minerai-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 2147483647;
+  padding: 10px 16px;
+  background: #1A1A1A;
+  color: #F7E4A8;
+  border: 1.5px solid #E8B84B;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+  animation: mineraiToastIn 0.25s ease;
+  transition: all 0.3s ease;
+  pointer-events: none;
+}
+
+@keyframes mineraiToastIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

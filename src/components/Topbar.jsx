@@ -2,8 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import Brand from './Brand';
 import ProfileModal from './ProfileModal';
 
-const EXTENSION_URL = 'https://chromewebstore.google.com/detail/mineirar-helper/dfapbcpmcciaddkefnfjacbojigkbgcp';
-
 export default function Topbar({ user, onLogout, onExport, onUpdateUser, onOpenExtension }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -52,7 +50,7 @@ export default function Topbar({ user, onLogout, onExport, onUpdateUser, onOpenE
                 </div>
                 <div className="user-dropdown-details">
                   <strong>{user?.name || 'Empreendedor Digital'}</strong>
-                  <small>{user?.email || 'usuario@minerarads.com.br'}</small>
+                  <small>{user?.email || 'voce@email.com'}</small>
                   <span className="plan-badge-pill">⭐ Plano Anual Pro</span>
                 </div>
               </div>

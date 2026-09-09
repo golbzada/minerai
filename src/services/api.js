@@ -789,7 +789,7 @@ export const api = {
 
       return JSON.stringify(
         {
-          source: 'minerarads',
+          source: 'minerai',
           version: 2,
           exported_at: new Date().toISOString(),
           tabs: tabs || [],

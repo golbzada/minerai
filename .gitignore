@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.vercel/
+
+# Segredos do Supabase. O .env.example fica versionado como modelo.
+.env
+.env.local
+.env.*.local
+
+# Capturas do Modelar Página e lixo do sistema
+*.zip.tmp
+.DS_Store
+Thumbs.db

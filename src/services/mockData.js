@@ -1,7 +1,7 @@
 export const INITIAL_USER = {
   id: 'usr_demo_123',
   name: 'Empreendedor Digital',
-  email: 'usuario@minerarads.com.br',
+  email: 'voce@email.com',
   active: true,
   plan: 'annual'
 };
