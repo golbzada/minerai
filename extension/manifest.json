@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Mineraí",
-  "version": "1.18.0",
+  "version": "1.19.0",
   "description": "Garimpagem e inteligência de anúncios de alta performance direto da Biblioteca de Anúncios Meta.",
   "icons": {
     "16": "icons/icon16.png",

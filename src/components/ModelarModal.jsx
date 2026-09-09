@@ -59,9 +59,14 @@ export default function ModelarModal({ onClose, urlInicial = '' }) {
         setTemExtensao(false);
         setMensagem('A extensão não respondeu. Instale ou recarregue esta página.');
       } else if (d.precisaPermissao) {
+        // A extensão abre a própria tela de autorização numa aba nova e termina
+        // a captura por lá — a pessoa não precisa voltar aqui.
         setMensagem(
-          'Falta autorizar a leitura de páginas. Clique no ícone da Mineraí na barra do Chrome ' +
-          'e use o botão "Autorizar modelagem no painel" — é uma vez só.'
+          d.telaAberta
+            ? 'Abri uma aba para você autorizar a leitura de páginas — é uma vez só, ' +
+              'e o download começa por lá mesmo.'
+            : 'Falta autorizar a leitura de páginas. Abra o ícone da Mineraí na barra do ' +
+              'Chrome e use o botão "Autorizar modelagem no painel".'
         );
       } else {
         setMensagem(d.error || 'Não foi possível capturar a página.');

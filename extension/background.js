@@ -1079,7 +1079,25 @@ async function baixarBlob(blob, nomeArquivo) {
 /**
  * Abre a URL numa aba, espera renderizar, captura e baixa os arquivos.
  */
-async function modelarPagina(url) {
+// O Chrome só aceita pedido de permissão vindo de uma página da extensão com
+// clique do usuário — o painel do site não pode pedir. Em vez de devolver um
+// texto mandando a pessoa caçar o ícone da extensão na barra (que vem escondido
+// atrás do quebra-cabeça), abrimos nossa própria tela, que pede a autorização e
+// já termina a captura ali mesmo.
+async function abrirTelaDeAutorizacao(url) {
+  const pagina = chrome.runtime.getURL(
+    `autorizar.html?url=${encodeURIComponent(url)}`
+  );
+  try {
+    await chrome.tabs.create({ url: pagina, active: true });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function modelarPagina(url, opcoes) {
+  const config = opcoes || {};
   let alvo;
   try {
     alvo = new URL(url);
@@ -1091,8 +1109,15 @@ async function modelarPagina(url) {
   const origem = `${alvo.origin}/*`;
   const temPermissao = await chrome.permissions.contains({ origins: [origem] });
   if (!temPermissao) {
+    // A própria tela de autorização chama esta função depois de conseguir a
+    // permissão. Se ela caísse aqui de novo, abriria outra aba sem parar.
+    let telaAberta = false;
+    if (config.abrirAutorizacao !== false) {
+      telaAberta = await abrirTelaDeAutorizacao(alvo.href);
+    }
     const erro = new Error('PERMISSAO_NECESSARIA');
     erro.origem = origem;
+    erro.telaAberta = telaAberta;
     throw erro;
   }
 
@@ -1207,12 +1232,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'MODELAR_PAGINA') {
-    modelarPagina(message.url)
+    modelarPagina(message.url, { abrirAutorizacao: message.abrirAutorizacao !== false })
       .then(res => sendResponse({ success: true, data: res }))
       .catch(err => sendResponse({
         success: false,
         error: err.message,
         precisaPermissao: err.message === 'PERMISSAO_NECESSARIA',
+        telaAberta: err.telaAberta === true,
         origem: err.origem || null
       }));
     return true;

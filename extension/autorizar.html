@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Mineraí — Liberar modelagem</title>
+  <link rel="icon" type="image/png" href="icons/icon48.png" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #FDF8ED;
+      color: #1A1A1A;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 20px;
+      line-height: 1.55;
+    }
+
+    .cartao {
+      width: 100%;
+      max-width: 560px;
+      background: #FFFFFF;
+      border: 1px solid #E8DEC5;
+      border-radius: 18px;
+      padding: 36px 38px 32px;
+      box-shadow: 0 18px 50px rgba(26, 26, 26, 0.09);
+    }
+
+    .marca {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      margin-bottom: 26px;
+    }
+
+    .marca img { width: 34px; height: 34px; border-radius: 9px; }
+
+    .marca span {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      color: #C4922C;
+    }
+
+    h1 {
+      font-size: 25px;
+      line-height: 1.25;
+      letter-spacing: -0.015em;
+      margin-bottom: 12px;
+    }
+
+    .intro { font-size: 15px; color: #4A4640; margin-bottom: 22px; }
+
+    .destaque {
+      background: #FDF8ED;
+      border: 1px solid #EFE3C8;
+      border-left: 3px solid #E8B84B;
+      border-radius: 10px;
+      padding: 15px 17px;
+      margin-bottom: 24px;
+    }
+
+    .destaque p { font-size: 13.5px; color: #666053; }
+    .destaque p + p { margin-top: 8px; }
+    .destaque strong { color: #1A1A1A; }
+
+    .alvo {
+      font-size: 13px;
+      color: #666053;
+      margin-bottom: 22px;
+      word-break: break-all;
+    }
+
+    .alvo code {
+      font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+      font-size: 12.5px;
+      background: #F4EFE0;
+      color: #1A1A1A;
+      padding: 3px 7px;
+      border-radius: 5px;
+    }
+
+    button {
+      width: 100%;
+      border: none;
+      border-radius: 11px;
+      padding: 15px 20px;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: transform 0.12s ease, opacity 0.12s ease;
+    }
+
+    button:hover:not(:disabled) { transform: translateY(-1px); }
+    button:disabled { opacity: 0.55; cursor: default; }
+
+    .principal {
+      background: linear-gradient(135deg, #F7E4A8 0%, #E8B84B 45%, #C4922C 100%);
+      color: #1A1A1A;
+    }
+
+    .secundario {
+      background: #FFFFFF;
+      color: #666053;
+      border: 1px solid #E0D7C2;
+      margin-top: 10px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .recado {
+      margin-top: 20px;
+      font-size: 14px;
+      padding: 14px 16px;
+      border-radius: 10px;
+      display: none;
+    }
+
+    .recado.aparece { display: block; }
+    .recado.neutro { background: #F4EFE0; color: #4A4640; }
+    .recado.erro { background: #FEF2F2; color: #991B1B; }
+    .recado.ok { background: #F0FDF4; color: #166534; }
+
+    .recado ul { margin: 10px 0 0 18px; font-size: 13.5px; }
+    .recado li { margin-bottom: 4px; }
+
+    .rodape {
+      margin-top: 26px;
+      padding-top: 18px;
+      border-top: 1px solid #F0E9D8;
+      font-size: 12.5px;
+      color: #918A79;
+    }
+  </style>
+</head>
+<body>
+  <div class="cartao">
+    <div class="marca">
+      <img src="icons/icon48.png" alt="" />
+      <span>Mineraí</span>
+    </div>
+
+    <h1 id="titulo">Liberar a modelagem de páginas</h1>
+
+    <p class="intro" id="intro">
+      Para copiar a estrutura de uma página, o Chrome precisa da sua autorização
+      uma única vez. Depois disso o botão <strong>Modelar Página</strong> do painel
+      funciona direto, em qualquer site.
+    </p>
+
+    <p class="alvo" id="alvo" style="display: none;">
+      Página que você pediu: <code id="alvo-url"></code>
+    </p>
+
+    <div class="destaque">
+      <p>
+        O Chrome vai mostrar um aviso dizendo <strong>“ler e alterar todos os seus
+        dados nos sites”</strong>. É o único texto que ele oferece para esse tipo
+        de autorização — não dá para pedir menos que isso e ainda conseguir ler
+        páginas que você escolher.
+      </p>
+      <p>
+        A Mineraí usa isso <strong>só quando você clica em modelar</strong>: ela abre
+        a página que você digitou, lê o HTML e o CSS, monta o ZIP e fecha. Não roda
+        em segundo plano, não acompanha sua navegação e nada sai do seu computador.
+      </p>
+    </div>
+
+    <button class="principal" id="btn-liberar">
+      <span id="btn-texto">🔓 Autorizar e continuar</span>
+    </button>
+
+    <button class="secundario" id="btn-fechar" style="display: none;">
+      Fechar esta aba
+    </button>
+
+    <div class="recado" id="recado"></div>
+
+    <p class="rodape">
+      Pode revogar quando quiser em <strong>chrome://extensions</strong> → Mineraí →
+      Detalhes → Permissões do site.
+    </p>
+  </div>
+
+  <script src="autorizar.js"></script>
+</body>
+</html>
