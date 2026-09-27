@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { extractPageIdFromUrl, NICHE_OPTIONS, STATUS_CONFIG, getFbAvatarUrl } from '../utils/metaParser';
 import { classifyStatus, STAGE_DAYS } from '../utils/offerMeta';
+import useLockBodyScroll from '../utils/useLockBodyScroll';
 
 // Valor especial do seletor: deixa o estágio ser recalculado pelo tempo.
 const AUTO_STATUS = 'auto';
@@ -18,6 +19,7 @@ const EMPTY_OFFER = {
 };
 
 export default function OfferModal({ offer, onClose, onSave }) {
+  useLockBodyScroll();
   const isExistingCustom = offer?.niche && !NICHE_OPTIONS.includes(offer.niche);
 
   const [formData, setFormData] = useState(

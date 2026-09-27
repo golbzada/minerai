@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import useLockBodyScroll from '../utils/useLockBodyScroll';
 
 export default function ExtensionModal({ onClose }) {
+  useLockBodyScroll();
   const [copiedLink, setCopiedLink] = useState('');
 
   function handleCopy(text, type) {

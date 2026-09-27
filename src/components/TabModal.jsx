@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import useLockBodyScroll from '../utils/useLockBodyScroll';
 
 export default function TabModal({ onClose, onSave }) {
+  useLockBodyScroll();
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');

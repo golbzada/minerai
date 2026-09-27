@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import useLockBodyScroll from '../utils/useLockBodyScroll';
 
 export default function ResultModal({ offer, onClose, onSave }) {
+  useLockBodyScroll();
   const [resultsCount, setResultsCount] = useState(offer.ads_count ?? 1);
   const [customDate, setCustomDate] = useState(new Date().toISOString().split('T')[0]);
   const [loading, setLoading] = useState(false);

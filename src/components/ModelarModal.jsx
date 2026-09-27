@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import useLockBodyScroll from '../utils/useLockBodyScroll';
 
 /**
  * MODELAR PÁGINA
@@ -8,6 +9,7 @@ import React, { useState, useEffect, useRef } from 'react';
  * pelo bridge, via postMessage.
  */
 export default function ModelarModal({ onClose, urlInicial = '' }) {
+  useLockBodyScroll();
   const [url, setUrl] = useState(urlInicial);
   const [estado, setEstado] = useState('parado'); // parado | capturando | ok | erro
   const [mensagem, setMensagem] = useState('');

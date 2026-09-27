@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { api } from '../services/api';
 import { getAccess } from '../utils/plan';
 import { formatCpfCnpj } from '../utils/metaParser';
+import useLockBodyScroll from '../utils/useLockBodyScroll';
 
 export default function ProfileModal({ user, onClose, onUpdateUser }) {
+  useLockBodyScroll();
   const [name, setName] = useState(user?.name || '');
   const [cpfCnpj, setCpfCnpj] = useState(user?.cpf_cnpj ? formatCpfCnpj(user.cpf_cnpj) : '');
   const [savedNotice, setSavedNotice] = useState('');

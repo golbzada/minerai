@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { normalizeHistory, todayIso } from '../utils/offerMeta';
+import useLockBodyScroll from '../utils/useLockBodyScroll';
 
 export default function HistoryModal({ offer, onClose, onAddResult, onDeleteEntry, readOnly = false }) {
+  useLockBodyScroll();
   const [newDate, setNewDate] = useState(todayIso());
   const [newCount, setNewCount] = useState('');
   const [loading, setLoading] = useState(false);
