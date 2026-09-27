@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { normalizeHistory, todayIso } from '../utils/offerMeta';
 
-export default function HistoryModal({ offer, onClose, onAddResult, onDeleteEntry }) {
+export default function HistoryModal({ offer, onClose, onAddResult, onDeleteEntry, readOnly = false }) {
   const [newDate, setNewDate] = useState(todayIso());
   const [newCount, setNewCount] = useState('');
   const [loading, setLoading] = useState(false);
@@ -61,6 +61,7 @@ export default function HistoryModal({ offer, onClose, onAddResult, onDeleteEntr
         </p>
 
         {/* Add Entry Form */}
+        {!readOnly && (
         <form className="history-add-box" onSubmit={handleAddEntry}>
           <div className="history-inputs">
             <label className="field-sm">
@@ -88,6 +89,7 @@ export default function HistoryModal({ offer, onClose, onAddResult, onDeleteEntr
             {loading ? 'Salvando...' : '+ Salvar Medição'}
           </button>
         </form>
+        )}
 
         {error && <p className="error">{error}</p>}
 
@@ -139,14 +141,16 @@ export default function HistoryModal({ offer, onClose, onAddResult, onDeleteEntr
                       )}
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      <button
-                        className="delete-entry-btn"
-                        type="button"
-                        onClick={() => handleDelete(item.date)}
-                        title="Excluir esta medição"
-                      >
-                        🗑️
-                      </button>
+                      {!readOnly && (
+                        <button
+                          className="delete-entry-btn"
+                          type="button"
+                          onClick={() => handleDelete(item.date)}
+                          title="Excluir esta medição"
+                        >
+                          🗑️
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

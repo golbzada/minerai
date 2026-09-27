@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Brand from './components/Brand';
 import Topbar from './components/Topbar';
 import MetricsBar from './components/MetricsBar';
@@ -13,20 +13,36 @@ import ExtensionModal from './components/ExtensionModal';
 import ModelarModal from './components/ModelarModal';
 import AuthPage from './components/AuthPage';
 import PublicShare from './components/PublicShare';
-import { api } from './services/api';
-import { supabase, isSupabaseConfigured } from './services/supabaseClient';
+import ResetPasswordPage from './components/ResetPasswordPage';
+import { api, PAGE_SIZE } from './services/api';
+import { supabase, isSupabaseConfigured, RESET_PASSWORD_PATH } from './services/supabaseClient';
 import { resolveStatus } from './utils/offerMeta';
 import { NICHE_OPTIONS } from './utils/metaParser';
+import { AUTH_EXPIRED_EVENT } from './utils/errors';
+import { getAccess, lockedMessage, LOCK_MODE } from './utils/plan';
+
+function readShareToken() {
+  return new URLSearchParams(window.location.hash.slice(1)).get('share');
+}
+
+/** O link de redefinição de senha abre /redefinir-senha (ou traz type=recovery no hash). */
+function isRecoveryUrl() {
+  if (window.location.pathname === RESET_PASSWORD_PATH) return true;
+  const hash = new URLSearchParams(window.location.hash.slice(1));
+  return hash.get('type') === 'recovery';
+}
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(undefined);
-  const [shareToken, setShareToken] = useState(() => {
-    return new URLSearchParams(window.location.hash.slice(1)).get('share');
-  });
+  const currentUserRef = useRef(undefined);
+  const [shareToken, setShareToken] = useState(readShareToken);
+  const [recoveryMode, setRecoveryMode] = useState(isRecoveryUrl);
 
   const [tabs, setTabs] = useState([]);
   const [activeTabId, setActiveTabId] = useState(null);
   const [offers, setOffers] = useState([]);
+  const [hasMoreOffers, setHasMoreOffers] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,33 +61,65 @@ export default function App() {
   const [feedbackNotice, setFeedbackNotice] = useState('');
   const [isSharing, setIsSharing] = useState(false);
 
+  const access = getAccess(currentUser);
+  const locked = Boolean(currentUser) && !access.active;
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
   // Hash change listener
   useEffect(() => {
     function handleHashChange() {
-      const token = new URLSearchParams(window.location.hash.slice(1)).get('share');
-      setShareToken(token);
+      setShareToken(readShareToken());
     }
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // Check auth session
+  // Sessão: carga inicial + eventos do Supabase + sessão expirada em chamadas.
   useEffect(() => {
+    let alive = true;
+
     api
       .me()
-      .then((res) => setCurrentUser(res.user))
-      .catch(() => setCurrentUser(null));
+      .then((res) => alive && setCurrentUser(res.user || null))
+      .catch(() => alive && setCurrentUser(null));
 
-    if (isSupabaseConfigured && supabase) {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        if (session?.user) {
-          api.me().then((res) => setCurrentUser(res.user)).catch(() => {});
-        } else if (event === 'SIGNED_OUT') {
-          setCurrentUser(null);
-        }
-      });
-      return () => subscription?.unsubscribe();
+    function handleExpired() {
+      if (isSupabaseConfigured && supabase) supabase.auth.signOut().catch(() => {});
+      setCurrentUser(null);
+      setFeedbackNotice('');
     }
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleExpired);
+
+    let subscription = null;
+    if (isSupabaseConfigured && supabase) {
+      ({ data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (!alive) return;
+
+        if (event === 'PASSWORD_RECOVERY') {
+          setRecoveryMode(true);
+          return;
+        }
+        if (event === 'SIGNED_OUT') {
+          setCurrentUser(null);
+          return;
+        }
+        // TOKEN_REFRESHED não muda o perfil: não vale uma ida ao banco.
+        if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION') {
+          if (!session?.user) return;
+          if (currentUserRef.current?.id === session.user.id && event !== 'USER_UPDATED') return;
+          api.me().then((res) => alive && setCurrentUser(res.user || null)).catch(() => {});
+        }
+      }));
+    }
+
+    return () => {
+      alive = false;
+      window.removeEventListener(AUTH_EXPIRED_EVENT, handleExpired);
+      subscription?.unsubscribe();
+    };
   }, []);
 
   // Load tabs
@@ -89,40 +137,66 @@ export default function App() {
     }
   }
 
-  // Load offers
+  // Load offers (primeira página; as seguintes vêm por "Carregar mais")
   async function loadOffers(tabId = activeTabId) {
     if (!tabId) return;
     try {
-      const res = await api.listOffers(tabId);
+      const res = await api.listOffers(tabId, { offset: 0, limit: PAGE_SIZE });
       const list = res.offers || [];
       setOffers(list);
-      setTabs((prev) =>
-        prev.map((t) => (t.id === tabId ? { ...t, offers_count: list.length } : t))
-      );
+      setHasMoreOffers(Boolean(res.hasMore));
+      if (!res.hasMore) {
+        setTabs((prev) =>
+          prev.map((t) => (t.id === tabId ? { ...t, offers_count: list.length } : t))
+        );
+      }
     } catch (err) {
       setFeedbackNotice(err.message);
     }
   }
 
+  const loadMoreOffers = useCallback(async () => {
+    if (!activeTabId || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await api.listOffers(activeTabId, { offset: offers.length, limit: PAGE_SIZE });
+      setOffers((prev) => {
+        const seen = new Set(prev.map((o) => o.id));
+        return [...prev, ...(res.offers || []).filter((o) => !seen.has(o.id))];
+      });
+      setHasMoreOffers(Boolean(res.hasMore));
+    } catch (err) {
+      setFeedbackNotice(err.message);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [activeTabId, offers.length, loadingMore]);
+
   useEffect(() => {
     if (currentUser) {
       try {
-        localStorage.setItem('minerai_user', JSON.stringify(currentUser));
-        window.postMessage({ type: 'MINERAI_SYNC_AUTH', user: currentUser }, '*');
+        // A extensão lê este registro para saber quem está logado. Só o
+        // necessário: nada de plano ou dados de assinatura.
+        const publicUser = { id: currentUser.id, name: currentUser.name, email: currentUser.email };
+        localStorage.setItem('minerai_user', JSON.stringify(publicUser));
+        window.postMessage({ type: 'MINERAI_SYNC_AUTH', user: publicUser }, window.location.origin);
       } catch (e) {}
       loadTabs();
     } else if (currentUser === null) {
       try {
         localStorage.removeItem('minerai_user');
       } catch (e) {}
+      setTabs([]);
+      setOffers([]);
+      setActiveTabId(null);
     }
-  }, [currentUser]);
+  }, [currentUser?.id]);
 
   useEffect(() => {
     if (currentUser && activeTabId) {
       loadOffers(activeTabId);
     }
-  }, [activeTabId, currentUser]);
+  }, [activeTabId, currentUser?.id]);
 
   // Filter & Sort Logic
   const visibleOffers = useMemo(() => {
@@ -183,6 +257,12 @@ export default function App() {
     return Array.from(new Set([...NICHE_OPTIONS, ...used]));
   }, [offers]);
 
+  function guardWrite() {
+    if (!locked) return true;
+    setFeedbackNotice(lockedMessage(currentUser));
+    return false;
+  }
+
   // Actions
   async function handleSaveOffer(offerData) {
     const payload = editingOffer
@@ -212,8 +292,9 @@ export default function App() {
   }
 
   async function handleDuplicateOffer(offer) {
+    if (!guardWrite()) return;
     try {
-      const res = await api.duplicateOffer(offer.id, activeTabId);
+      await api.duplicateOffer(offer.id, activeTabId);
       setFeedbackNotice(`Oferta "${offer.name}" duplicada!`);
       await loadOffers();
       await loadTabs();
@@ -223,6 +304,7 @@ export default function App() {
   }
 
   async function handleAddDailyResult(offer, count, customDate) {
+    if (!guardWrite()) return;
     try {
       const res = await api.addDailyResult(offer.id, count, customDate);
       setFeedbackNotice(res.message);
@@ -236,6 +318,7 @@ export default function App() {
   }
 
   async function handleDeleteHistoryEntry(offerId, date) {
+    if (!guardWrite()) return;
     try {
       const res = await api.deleteHistoryEntry(offerId, date);
       setFeedbackNotice(res.message);
@@ -249,19 +332,17 @@ export default function App() {
   }
 
   async function handleCreateTab(tabName) {
-    try {
-      const res = await api.createTab({ name: tabName });
-      setTabs((prev) => [...prev, res.tab]);
-      setActiveTabId(res.tab.id);
-      setOffers([]);
-      setIsTabModalOpen(false);
-      setFeedbackNotice(res.message);
-    } catch (err) {
-      setFeedbackNotice(err.message);
-    }
+    const res = await api.createTab({ name: tabName });
+    setTabs((prev) => [...prev, res.tab]);
+    setActiveTabId(res.tab.id);
+    setOffers([]);
+    setHasMoreOffers(false);
+    setIsTabModalOpen(false);
+    setFeedbackNotice(res.message);
   }
 
   async function handleRenameTab(tabId, newName) {
+    if (!guardWrite()) return;
     try {
       const res = await api.updateTab(tabId, newName);
       setFeedbackNotice(res.message);
@@ -283,6 +364,7 @@ export default function App() {
   }
 
   async function handleShareTab() {
+    if (!guardWrite()) return;
     if (!activeTabId) {
       setFeedbackNotice('Crie ou selecione uma tab antes de compartilhar.');
       return;
@@ -290,10 +372,10 @@ export default function App() {
     setIsSharing(true);
     try {
       const res = await api.createShareLink(activeTabId);
-      const shareUrl = `${window.location.origin}${window.location.pathname}#share=${res.token}`;
+      const shareUrl = `${window.location.origin}/#share=${res.token}`;
       try {
         await navigator.clipboard.writeText(shareUrl);
-        setFeedbackNotice('Link público copiado para a área de transferência! Quem receber poderá apenas visualizar.');
+        setFeedbackNotice('Link público copiado para a área de transferência! Quem receber poderá apenas visualizar (o link vale por 30 dias).');
       } catch {
         window.prompt('Copie o link público abaixo:', shareUrl);
         setFeedbackNotice('Link público gerado!');
@@ -322,6 +404,7 @@ export default function App() {
   }
 
   async function handleImportBackup(jsonText) {
+    if (!guardWrite()) return;
     try {
       const res = await api.importData(jsonText);
       setFeedbackNotice(
@@ -337,6 +420,18 @@ export default function App() {
   async function handleLogout() {
     await api.logout();
     setCurrentUser(null);
+  }
+
+  // 0. Link de redefinição de senha
+  if (recoveryMode) {
+    return (
+      <ResetPasswordPage
+        onDone={() => {
+          setRecoveryMode(false);
+          api.me().then((res) => setCurrentUser(res.user || null)).catch(() => setCurrentUser(null));
+        }}
+      />
+    );
   }
 
   // 1. If share token is present in URL
@@ -356,6 +451,21 @@ export default function App() {
   // 3. Unauthenticated -> Auth Page
   if (!currentUser) {
     return <AuthPage onAuthenticated={(user) => setCurrentUser(user)} />;
+  }
+
+  // 3.1 Sem plano ativo no modo bloqueio total
+  if (locked && LOCK_MODE === 'block') {
+    return (
+      <div className="public-state">
+        <Brand />
+        <h2>Plano inativo.</h2>
+        <p>{lockedMessage(currentUser)}</p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 20 }}>
+          <button className="secondary" onClick={handleExportBackup}>Exportar meu acervo</button>
+          <button className="secondary" onClick={handleLogout}>Sair da conta</button>
+        </div>
+      </div>
+    );
   }
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -379,6 +489,12 @@ export default function App() {
         </h1>
       </section>
 
+      {locked && (
+        <p className="error" role="status">
+          {lockedMessage(currentUser)} Seu acervo continua disponível para consulta e exportação.
+        </p>
+      )}
+
       {/* Metrics Bar */}
       <MetricsBar offers={offers} tabName={activeTab?.name} />
 
@@ -386,11 +502,12 @@ export default function App() {
       <Tabs
         tabs={tabs}
         activeTabId={activeTabId}
-        currentOffersCount={offers.length}
+        currentOffersCount={hasMoreOffers ? activeTab?.offers_count || offers.length : offers.length}
         onSelectTab={(id) => setActiveTabId(id)}
         onNewTab={() => setIsTabModalOpen(true)}
         onRenameTab={handleRenameTab}
         onDeleteTab={handleDeleteTab}
+        locked={locked}
       />
 
       {/* Toolbar with Search, Filters, Sort, Export/Import */}
@@ -409,10 +526,11 @@ export default function App() {
         isSharing={isSharing}
         onExport={handleExportBackup}
         onImport={handleImportBackup}
-        onNewOffer={() => setEditingOffer(null)}
+        onNewOffer={() => guardWrite() && setEditingOffer(null)}
         onOpenExtension={() => setIsExtensionModalOpen(true)}
         onOpenModelar={() => setIsModelarOpen(true)}
         availableNiches={availableNiches}
+        locked={locked}
       />
 
       {feedbackNotice && (
@@ -428,14 +546,23 @@ export default function App() {
             key={offer.id}
             offer={offer}
             index={idx}
-            onEdit={setEditingOffer}
+            locked={locked}
+            onEdit={(target) => guardWrite() && setEditingOffer(target)}
             onDelete={handleDeleteOffer}
             onDuplicate={handleDuplicateOffer}
-            onAddResult={setResultTargetOffer}
+            onAddResult={(target) => guardWrite() && setResultTargetOffer(target)}
             onOpenHistory={(target) => setHistoryTargetOffer(target)}
           />
         ))}
       </section>
+
+      {hasMoreOffers && (
+        <div className="empty" style={{ paddingTop: 0 }}>
+          <button className="secondary" onClick={loadMoreOffers} disabled={loadingMore}>
+            {loadingMore ? 'Carregando...' : `Carregar mais ofertas (${offers.length} de ${activeTab?.offers_count || '…'})`}
+          </button>
+        </div>
+      )}
 
       {!visibleOffers.length && (
         <div className="empty">
@@ -491,6 +618,7 @@ export default function App() {
       {historyTargetOffer && (
         <HistoryModal
           offer={historyTargetOffer}
+          readOnly={locked}
           onClose={() => setHistoryTargetOffer(null)}
           onAddResult={handleAddDailyResult}
           onDeleteEntry={handleDeleteHistoryEntry}

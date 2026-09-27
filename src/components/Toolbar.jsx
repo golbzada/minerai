@@ -19,7 +19,9 @@ export default function Toolbar({
   onNewOffer,
   onOpenExtension,
   onOpenModelar,
-  availableNiches = NICHE_OPTIONS
+  availableNiches = NICHE_OPTIONS,
+  // Plano inativo: ações de escrita ficam desabilitadas (o banco também recusa).
+  locked = false
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const fileInputRef = useRef(null);
@@ -110,8 +112,8 @@ export default function Toolbar({
                     setIsMenuOpen(false);
                     onShare();
                   }}
-                  disabled={isSharing}
-                  title="Gerar link público somente leitura da tab"
+                  disabled={isSharing || locked}
+                  title={locked ? 'Ative um plano para compartilhar' : 'Gerar link público somente leitura da tab'}
                 >
                   <span className="toolbar-menu-item-icon">🔗</span>
                   <span>{isSharing ? 'Gerando...' : 'Compartilhar'}</span>
@@ -137,7 +139,8 @@ export default function Toolbar({
                     setIsMenuOpen(false);
                     fileInputRef.current?.click();
                   }}
-                  title="Importar acervo de arquivo JSON"
+                  disabled={locked}
+                  title={locked ? 'Ative um plano para importar' : 'Importar acervo de arquivo JSON'}
                 >
                   <span className="toolbar-menu-item-icon">⬇️</span>
                   <span>Importar</span>
@@ -159,7 +162,8 @@ export default function Toolbar({
             className="primary add gold-btn"
             type="button"
             onClick={onNewOffer}
-            title="Cadastrar manualmente uma nova oferta"
+            disabled={locked}
+            title={locked ? 'Ative um plano para cadastrar ofertas' : 'Cadastrar manualmente uma nova oferta'}
           >
             + Nova Oferta
           </button>

@@ -1,5 +1,10 @@
 import { storage } from './storage';
-import { supabase, isSupabaseConfigured } from './supabaseClient';
+import {
+  supabase,
+  isSupabaseConfigured,
+  RESET_PASSWORD_URL,
+  EMAIL_CONFIRM_URL
+} from './supabaseClient';
 import {
   decodeNotes,
   encodeNotes,
@@ -11,6 +16,111 @@ import {
   classifyStatus,
   todayIso
 } from '../utils/offerMeta';
+import { AppError, toUserError, assertOk } from '../utils/errors';
+import { safeHttpUrl, safeImageSrc, safeCreativeThumb } from '../utils/url';
+
+// ==============================================================================
+// LIMITES (espelham as constraints do banco: migração 002)
+// ==============================================================================
+const LIMITS = {
+  name: 200,
+  niche: 80,
+  pageId: 64,
+  notes: 9000, // deixa folga para o bloco de metadados dentro dos 10000 do banco
+  tabName: 80,
+  profileName: 120,
+  cpfCnpj: 20,
+  historyEntries: 3650,
+  importBatch: 100,
+  shareOffers: 300
+};
+
+export const PAGE_SIZE = 120;
+
+const STATUS_VALUES = ['testing', 'pre_scaling', 'scaling', 'winner', 'paused'];
+
+// Colunas realmente usadas pela interface (evita puxar colunas futuras sem querer).
+const OFFER_COLUMNS =
+  'id,user_id,tab_id,name,page_id,ads_count,library_url,landing_page,affiliate_link,' +
+  'funnel_notes,status,niche,avatar_url,creative_thumb,history,created_at,updated_at';
+
+const PROFILE_COLUMNS = 'id,name,email,cpf_cnpj,plan,active,trial_ends_at,created_at';
+
+// Campos que entram no retrato público de uma tab (a RPC do banco também
+// remove affiliate_link/funnel_notes/notes de retratos antigos).
+const SHARE_FIELDS = [
+  'id', 'name', 'page_id', 'ads_count', 'library_url', 'landing_page', 'destination_url',
+  'status', 'niche', 'avatar_url', 'creative_thumb', 'history', 'created_at',
+  'start_date', 'running_days', 'topic', 'library_id'
+];
+const SHARE_META_FIELDS = ['start_date', 'status_manual', 'topic', 'page_slug', 'library_id', 'page_id'];
+
+const ONLINE = () => isSupabaseConfigured && supabase;
+
+// ==============================================================================
+// HELPERS
+// ==============================================================================
+
+function clip(value, max) {
+  const str = value == null ? '' : String(value);
+  return str.length > max ? str.slice(0, max) : str;
+}
+
+function safeStatus(value, fallback = 'testing') {
+  return STATUS_VALUES.includes(value) ? value : fallback;
+}
+
+function safeCount(value, fallback = 0) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(10000000, Math.max(0, Math.round(n)));
+}
+
+function safeHistory(history) {
+  return normalizeHistory(history)
+    .slice(-LIMITS.historyEntries)
+    .map((h) => historyEntry(h.date, h.count));
+}
+
+function safeAvatar(value) {
+  const src = safeImageSrc(value);
+  return src && src.length <= 200000 ? src : null;
+}
+
+/**
+ * ID do usuário logado. Usa a sessão local (sem ida ao servidor): o filtro por
+ * user_id é só conforto para a query, quem garante o isolamento é o RLS.
+ */
+async function currentUserId() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data?.session?.user) {
+    throw new AppError('Não autenticado', { code: 'AUTH_EXPIRED', isAuth: true });
+  }
+  return data.session.user.id;
+}
+
+async function fetchProfile(userId) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select(PROFILE_COLUMNS)
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) throw toUserError(error, 'Não foi possível carregar seu perfil.');
+  return data || null;
+}
+
+/** Perfil ausente (trigger falhou) vira conta sem plano: nunca acesso pago. */
+function fallbackProfile(authUser) {
+  return {
+    id: authUser.id,
+    name: authUser.user_metadata?.name || (authUser.email || '').split('@')[0] || 'Minerador',
+    email: authUser.email,
+    plan: null,
+    active: false,
+    trial_ends_at: null
+  };
+}
 
 /**
  * Converte uma linha crua da tabela `offers` no formato usado pela interface:
@@ -41,20 +151,17 @@ function formatOffer(row) {
  * formulário ou da extensão, preservando metadados já existentes.
  */
 function buildNotesField(offerData, existingMeta = {}) {
-  const incoming = offerData.meta || {};
-  const notes = offerData.notes ?? offerData.funnel_notes ?? '';
+  const incoming = offerData.meta && typeof offerData.meta === 'object' ? offerData.meta : {};
+  const notes = clip(offerData.notes ?? offerData.funnel_notes ?? '', LIMITS.notes);
 
   let startDate = incoming.start_date || offerData.start_date || existingMeta.start_date || null;
 
-  // Se o usuário digitou "há X dias rodando", derivamos a data de início para
-  // que a contagem continue andando sozinha nos dias seguintes.
+  // "há X dias rodando" vira data de início para a contagem andar sozinha.
   if (offerData.running_days != null && offerData.running_days !== '') {
     const typedDays = Math.max(1, parseInt(offerData.running_days, 10) || 1);
     startDate = daysToStartDate(typedDays);
   }
 
-  // `status_manual` marca que o usuário fixou o estágio na mão; sem ele, o
-  // estágio é recalculado sozinho pelo tempo de veiculação.
   const statusManual =
     typeof offerData.status_manual === 'boolean'
       ? offerData.status_manual
@@ -68,6 +175,53 @@ function buildNotesField(offerData, existingMeta = {}) {
   });
 }
 
+/** Linha de `offers` saneada, pronta para inserir/atualizar. */
+function buildOfferRow(offerData, { userId, existingMeta = {}, includeHistoryFallback = true } = {}) {
+  const adsCount = safeCount(offerData.ads_count ?? offerData.initial_results ?? 1, 1);
+  const history = safeHistory(offerData.history);
+
+  const row = {
+    name: clip((offerData.name || '').trim() || 'Nova Oferta', LIMITS.name),
+    page_id: clip(String(offerData.page_id || ''), LIMITS.pageId),
+    ads_count: adsCount,
+    library_url: safeHttpUrl(offerData.library_url),
+    landing_page: safeHttpUrl(offerData.landing_page || offerData.destination_url),
+    affiliate_link: safeHttpUrl(offerData.affiliate_link),
+    funnel_notes: buildNotesField(offerData, existingMeta),
+    status: safeStatus(offerData.status),
+    niche: clip((offerData.niche || '').trim() || 'Geral', LIMITS.niche)
+  };
+
+  if (userId) row.user_id = userId;
+  if (history.length) {
+    row.history = history;
+  } else if (includeHistoryFallback) {
+    row.history = [historyEntry(todayIso(), adsCount)];
+  }
+
+  return row;
+}
+
+/** Só os campos públicos de uma oferta entram no retrato compartilhado. */
+function shareSnapshotEntry(offer) {
+  const entry = {};
+  SHARE_FIELDS.forEach((key) => {
+    if (offer[key] !== undefined) entry[key] = offer[key];
+  });
+  const meta = {};
+  SHARE_META_FIELDS.forEach((key) => {
+    if (offer.meta?.[key] !== undefined) meta[key] = offer.meta[key];
+  });
+  entry.meta = meta;
+  return entry;
+}
+
+function randomToken() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export const API_CONFIG = {
   USE_LOCAL: !isSupabaseConfigured,
   IS_SUPABASE: isSupabaseConfigured
@@ -78,259 +232,211 @@ export const api = {
   // AUTH & SESSION
   // ============================================================================
 
+  /** Usuário logado (perfil) ou null quando não há sessão. Nunca inventa plano. */
   async me() {
-    if (isSupabaseConfigured && supabase) {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError || !user) {
-        throw new Error('Não autenticado');
-      }
+    if (ONLINE()) {
+      const { data, error } = await supabase.auth.getSession();
+      if (error || !data?.session?.user) return { user: null };
 
-      // Fetch profile
-      const { data: profile, error: profError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      if (profError || !profile) {
-        return {
-          user: {
-            id: user.id,
-            name: user.user_metadata?.name || user.email.split('@')[0],
-            email: user.email,
-            plan: 'annual',
-            active: true
-          }
-        };
-      }
-
-      return { user: profile };
+      const authUser = data.session.user;
+      const profile = await fetchProfile(authUser.id);
+      return { user: profile || fallbackProfile(authUser) };
     }
 
-    // Fallback local
-    const user = storage.getUser();
-    if (!user) throw new Error('Não autenticado');
-    return { user };
+    return { user: storage.getUser() || null };
   },
 
   async login({ email, password }) {
-    if (isSupabaseConfigured && supabase) {
+    if (ONLINE()) {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: (email || '').trim(),
         password
       });
 
       if (error) {
-        let msg = 'Erro ao realizar login. Verifique suas credenciais.';
-        if (error.message.includes('Invalid login credentials')) {
-          msg = 'E-mail ou senha incorretos.';
-        } else if (error.message.includes('Email not confirmed')) {
-          msg = 'Conta aguardando confirmação. Clique em "Esqueci minha senha" para liberar o acesso instantaneamente.';
+        const msg = (error.message || '').toLowerCase();
+        if (msg.includes('email not confirmed')) {
+          throw new AppError(
+            'Confirme seu e-mail antes de entrar. Procure a mensagem do Mineraí na caixa de entrada (ou no spam).',
+            { code: 'EMAIL_NOT_CONFIRMED' }
+          );
         }
-        throw new Error(msg);
+        if (msg.includes('invalid login credentials') || error.status === 400) {
+          throw new AppError('E-mail ou senha incorretos.', { code: 'INVALID_CREDENTIALS' });
+        }
+        throw toUserError(error, 'Não foi possível entrar. Tente novamente.');
       }
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', data.user.id)
-        .single();
-
-      const user = profile || {
-        id: data.user.id,
-        name: data.user.user_metadata?.name || email.split('@')[0],
-        email: data.user.email,
-        plan: 'annual',
-        active: true
-      };
-
-      storage.setUser(user);
+      const profile = await fetchProfile(data.user.id);
+      const user = profile || fallbackProfile(data.user);
       return { message: 'Login realizado com sucesso!', user };
     }
 
-    // Fallback local
+    // Fallback local (sem Supabase configurado)
     let user = storage.getUser();
     if (!user || user.email !== email) {
       user = {
         id: `usr_${Date.now()}`,
         name: email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-        email: email,
+        email,
         active: true,
-        plan: 'annual'
+        plan: 'trial'
       };
     }
     storage.setUser(user);
     return { message: 'Login realizado com sucesso!', user };
   },
 
-  async startRegistration({ name, email, password }) {
-    if (isSupabaseConfigured && supabase) {
-      // 1. Tenta cadastrar no Supabase Auth
+  /**
+   * Cadastro. Com "Confirm email" ligado no Supabase, o usuário só entra
+   * depois de clicar no link do e-mail: devolvemos needsConfirmation.
+   */
+  async register({ name, email, password }) {
+    const cleanName = clip((name || '').trim(), LIMITS.profileName);
+    const cleanEmail = (email || '').trim();
+
+    if (ONLINE()) {
       const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: cleanEmail,
         password,
         options: {
-          data: {
-            name: name ? name.trim() : email.split('@')[0]
-          }
+          data: { name: cleanName || cleanEmail.split('@')[0] },
+          emailRedirectTo: EMAIL_CONFIRM_URL
         }
       });
 
       if (error) {
-        // Se a conta já existe, tenta autenticar diretamente
-        if (error.message.includes('already registered') || error.message.includes('already exists')) {
-          return await this.login({ email, password });
+        const msg = (error.message || '').toLowerCase();
+        if (msg.includes('already registered') || msg.includes('already exists')) {
+          throw new AppError('Este e-mail já tem conta. Entre ou use "Esqueci minha senha".', {
+            code: 'ALREADY_REGISTERED'
+          });
         }
-        throw new Error(error.message || 'Erro ao realizar cadastro.');
+        if (msg.includes('password')) {
+          throw new AppError('A senha não atende aos requisitos mínimos.', { code: 'WEAK_PASSWORD' });
+        }
+        throw toUserError(error, 'Não foi possível concluir o cadastro.');
       }
 
-      // 2. Se a sessão foi retornada na hora, salva e conclui
+      // Confirmação desligada no painel: a sessão já vem pronta.
       if (data.session && data.user) {
-        const user = {
-          id: data.user.id,
-          name: name ? name.trim() : email.split('@')[0],
-          email: data.user.email,
-          plan: 'annual',
-          active: true
+        const profile = await fetchProfile(data.user.id);
+        return {
+          message: 'Cadastro realizado com sucesso!',
+          user: profile || fallbackProfile(data.user)
         };
-        storage.setUser(user);
-        return { message: 'Cadastro realizado com sucesso!', autoConfirmed: true, user };
       }
 
-      // 3. Tenta login direto para capturar a sessão
-      try {
-        const loginRes = await this.login({ email, password });
-        return { message: 'Cadastro realizado com sucesso!', autoConfirmed: true, user: loginRes.user };
-      } catch (e) {
-        const user = {
-          id: data.user?.id || `usr_${Date.now()}`,
-          name: name ? name.trim() : email.split('@')[0],
-          email: email.trim(),
-          plan: 'annual',
-          active: true
-        };
-        storage.setUser(user);
-        return { message: 'Cadastro realizado com sucesso!', autoConfirmed: true, user };
-      }
+      // Confirmação ligada: aguardando o clique no e-mail. (Se o e-mail já
+      // existia, o Supabase devolve um usuário "fantasma" sem identities —
+      // a resposta é a mesma de propósito, para não revelar quem tem conta.)
+      return {
+        message: `Enviamos um link de confirmação para ${cleanEmail}. Abra o e-mail para ativar sua conta.`,
+        needsConfirmation: true,
+        email: cleanEmail
+      };
     }
 
     const user = {
       id: `usr_${Date.now()}`,
-      name: name ? name.trim() : email.split('@')[0],
-      email: email.trim(),
-      plan: 'annual',
+      name: cleanName || cleanEmail.split('@')[0],
+      email: cleanEmail,
+      plan: 'trial',
       active: true
     };
     storage.setUser(user);
-    return { message: 'Cadastro realizado com sucesso!', autoConfirmed: true, user };
+    return { message: 'Cadastro realizado com sucesso!', user };
   },
 
-  async verifyRegistration({ email, code }) {
-    return { message: 'Código verificado com sucesso!' };
+  /** Reenvia o e-mail de confirmação de cadastro. */
+  async resendConfirmation(email) {
+    if (!ONLINE()) return { message: 'Modo local: não há e-mail para reenviar.' };
+
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: (email || '').trim(),
+      options: { emailRedirectTo: EMAIL_CONFIRM_URL }
+    });
+    if (error) throw toUserError(error, 'Não foi possível reenviar o e-mail agora.');
+    return { message: 'E-mail de confirmação reenviado. Confira a caixa de entrada e o spam.' };
   },
 
-  async completeRegistration({ email, password, name }) {
-    if (isSupabaseConfigured && supabase) {
-      const { data: { user } } = await supabase.auth.getUser();
-      const finalUser = user || {
-        id: `usr_${Date.now()}`,
-        name: name ? name.trim() : email.split('@')[0],
-        email: email.trim(),
-        active: true,
-        plan: 'annual'
-      };
-      storage.setUser(finalUser);
-      return { message: 'Cadastro concluído com sucesso!', user: finalUser };
-    }
+  /**
+   * Fluxo nativo de "esqueci minha senha": o Supabase envia um link com token
+   * que abre /redefinir-senha, onde o usuário escolhe a nova senha.
+   */
+  async requestPasswordReset(email) {
+    const cleanEmail = (email || '').trim();
+    if (!cleanEmail) throw new AppError('Informe seu e-mail.', { code: 'VALIDATION' });
 
-    const user = {
-      id: `usr_${Date.now()}`,
-      name: name ? name.trim() : email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-      email: email,
-      active: true,
-      plan: 'annual'
-    };
-    storage.setUser(user);
-    return { message: 'Cadastro concluído com sucesso!', user };
-  },
-
-  async startPasswordReset({ email }) {
-    return { message: 'Informe sua nova senha abaixo para redefinir o acesso.' };
-  },
-
-  async verifyPasswordReset({ email, code }) {
-    return { message: 'Código verificado com sucesso!', reset_token: 'valid' };
-  },
-
-  async completePasswordReset({ email, password }) {
-    if (isSupabaseConfigured && supabase) {
-      // 1. Tenta redefinir via RPC direta no Postgres (segura e sem depender de SMTP)
-      try {
-        const { data: rpcData, error: rpcError } = await supabase.rpc('quick_reset_password', {
-          user_email: email.trim(),
-          new_password: password
-        });
-
-        if (!rpcError && rpcData && rpcData.success) {
-          try {
-            const loginRes = await this.login({ email, password });
-            return {
-              message: 'Senha alterada com sucesso!',
-              user: loginRes.user,
-              autoLoggedIn: true
-            };
-          } catch (e) {
-            return { message: 'Senha alterada com sucesso! Faça login com a sua nova senha.' };
-          }
-        } else if (rpcData && rpcData.error) {
-          throw new Error(rpcData.error);
-        }
-      } catch (rpcErr) {
-        if (rpcErr.message && !rpcErr.message.includes('function quick_reset_password')) {
-          throw rpcErr;
-        }
+    if (ONLINE()) {
+      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo: RESET_PASSWORD_URL
+      });
+      // O Supabase responde sucesso mesmo para e-mail sem conta: a mensagem
+      // abaixo é neutra de propósito e não revela quem tem cadastro.
+      if (error) {
+        throw toUserError(error, 'Não foi possível enviar o e-mail agora. Tente novamente em instantes.');
       }
-
-      // 2. Fallback de atualização
-      try {
-        await supabase.auth.updateUser({ password });
-      } catch (e) {}
-
-      // Tenta login direto
-      try {
-        const loginRes = await this.login({ email, password });
-        return { message: 'Senha redefinida com sucesso!', user: loginRes.user, autoLoggedIn: true };
-      } catch (e) {}
-
-      return { message: 'Senha alterada com sucesso! Faça login com sua nova senha.' };
     }
 
-    return { message: 'Senha alterada com sucesso! Faça login com sua nova senha.' };
+    return {
+      message: `Se existir uma conta para ${cleanEmail}, enviamos um link de redefinição. Confira a caixa de entrada e o spam.`
+    };
+  },
+
+  /** Define a nova senha (o usuário chegou pelo link do e-mail e já tem sessão). */
+  async updatePassword(password) {
+    if (!ONLINE()) return { message: 'Modo local: senha não é armazenada.' };
+
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) {
+      const msg = (error.message || '').toLowerCase();
+      if (msg.includes('same') || msg.includes('different')) {
+        throw new AppError('A nova senha precisa ser diferente da anterior.', { code: 'SAME_PASSWORD' });
+      }
+      if (msg.includes('session') || error.status === 401) {
+        throw new AppError('O link de redefinição expirou. Peça um novo em "Esqueci minha senha".', {
+          code: 'LINK_EXPIRED'
+        });
+      }
+      throw toUserError(error, 'Não foi possível salvar a nova senha.');
+    }
+    return { message: 'Senha alterada com sucesso!' };
   },
 
   async logout() {
-    if (isSupabaseConfigured && supabase) {
+    if (ONLINE()) {
       await supabase.auth.signOut().catch(() => {});
     }
     storage.setUser(null);
     return { message: 'Desconectado com sucesso.' };
   },
 
-  async updateProfile(userData) {
-    if (isSupabaseConfigured && supabase) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await supabase
-          .from('profiles')
-          .update({
-            name: userData.name,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', user.id);
-      }
+  /** Só name e cpf_cnpj: plan/active pertencem ao servidor. */
+  async updateProfile({ name, cpf_cnpj }) {
+    const patch = {};
+    if (name !== undefined) patch.name = clip((name || '').trim(), LIMITS.profileName);
+    if (cpf_cnpj !== undefined) patch.cpf_cnpj = clip((cpf_cnpj || '').replace(/\D/g, ''), LIMITS.cpfCnpj) || null;
+
+    if (patch.name === '') throw new AppError('Informe seu nome.', { code: 'VALIDATION' });
+
+    if (ONLINE()) {
+      const userId = await currentUserId();
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq('id', userId)
+        .select(PROFILE_COLUMNS)
+        .single();
+
+      if (error) throw toUserError(error, 'Não foi possível salvar o perfil.');
+      return { message: 'Perfil atualizado com sucesso!', user: data };
     }
-    storage.setUser(userData);
-    return { message: 'Perfil atualizado com sucesso!', user: userData };
+
+    const user = { ...(storage.getUser() || {}), ...patch };
+    storage.setUser(user);
+    return { message: 'Perfil atualizado com sucesso!', user };
   },
 
   // ============================================================================
@@ -338,90 +444,89 @@ export const api = {
   // ============================================================================
 
   async listTabs() {
-    if (isSupabaseConfigured && supabase) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Não autenticado');
+    if (ONLINE()) {
+      const userId = await currentUserId();
 
       const { data: tabs, error } = await supabase
         .from('tabs')
-        .select('*')
-        .eq('user_id', user.id)
+        .select('id,name,created_at')
+        .eq('user_id', userId)
         .order('created_at', { ascending: true });
 
-      if (error) throw new Error(error.message || 'Erro ao listar abas.');
+      assertOk(error, 'Erro ao listar abas.');
 
-      // Count offers per tab
-      const { data: offers } = await supabase
+      // Contagem por aba: só a coluna tab_id trafega.
+      const { data: offers, error: countErr } = await supabase
         .from('offers')
         .select('tab_id')
-        .eq('user_id', user.id);
+        .eq('user_id', userId);
+
+      assertOk(countErr, 'Erro ao contar ofertas.');
 
       const countMap = {};
       (offers || []).forEach((o) => {
-        if (o.tab_id) {
-          countMap[o.tab_id] = (countMap[o.tab_id] || 0) + 1;
-        }
+        if (o.tab_id) countMap[o.tab_id] = (countMap[o.tab_id] || 0) + 1;
       });
 
-      const formattedTabs = (tabs || []).map((t) => ({
-        id: t.id,
-        name: t.name,
-        offers_count: countMap[t.id] || 0
-      }));
-
-      return { tabs: formattedTabs };
+      return {
+        tabs: (tabs || []).map((t) => ({ id: t.id, name: t.name, offers_count: countMap[t.id] || 0 }))
+      };
     }
 
-    const tabs = storage.getTabs();
-    return { tabs };
+    return { tabs: storage.getTabs() };
   },
 
   async createTab({ name }) {
-    if (isSupabaseConfigured && supabase) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Não autenticado');
+    const cleanName = clip((name || '').trim(), LIMITS.tabName);
+    if (!cleanName) throw new AppError('Informe o nome da tab.', { code: 'VALIDATION' });
+
+    if (ONLINE()) {
+      const userId = await currentUserId();
 
       const { data, error } = await supabase
         .from('tabs')
-        .insert([{ user_id: user.id, name: name.trim() }])
-        .select()
+        .insert([{ user_id: userId, name: cleanName }])
+        .select('id,name')
         .single();
 
-      if (error) throw new Error(error.message || 'Erro ao criar aba.');
+      assertOk(error, 'Erro ao criar aba.');
 
-      const newTab = { id: data.id, name: data.name, offers_count: 0 };
-      return { message: `Tab "${name}" criada com sucesso!`, tab: newTab };
+      return { message: `Tab "${cleanName}" criada com sucesso!`, tab: { id: data.id, name: data.name, offers_count: 0 } };
     }
 
-    const tab = storage.createTab(name);
-    return { message: `Tab "${name}" criada com sucesso!`, tab };
+    const tab = storage.createTab(cleanName);
+    return { message: `Tab "${cleanName}" criada com sucesso!`, tab };
   },
 
   async updateTab(id, name) {
-    if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase
+    const cleanName = clip((name || '').trim(), LIMITS.tabName);
+    if (!cleanName) throw new AppError('Informe o nome da tab.', { code: 'VALIDATION' });
+
+    if (ONLINE()) {
+      const { data, error } = await supabase
         .from('tabs')
-        .update({ name: name.trim() })
-        .eq('id', id);
+        .update({ name: cleanName })
+        .eq('id', id)
+        .select('id,name')
+        .maybeSingle();
 
-      if (error) throw new Error(error.message || 'Erro ao renomear aba.');
+      assertOk(error, 'Erro ao renomear aba.');
+      if (!data) throw new AppError('Aba não encontrada.', { code: 'NOT_FOUND' });
 
-      return { message: 'Tab renomeada com sucesso!', tab: { id, name: name.trim() } };
+      return { message: 'Tab renomeada com sucesso!', tab: { id, name: cleanName } };
     }
 
-    const tab = storage.updateTab(id, name);
+    const tab = storage.updateTab(id, cleanName);
     return { message: 'Tab renomeada com sucesso!', tab };
   },
 
   async deleteTab(id) {
-    if (isSupabaseConfigured && supabase) {
+    if (ONLINE()) {
       const { error } = await supabase.from('tabs').delete().eq('id', id);
-      if (error) throw new Error(error.message || 'Erro ao excluir aba.');
+      assertOk(error, 'Erro ao excluir aba.');
 
-      // Return next tab
       const { tabs } = await this.listTabs();
-      const nextTabId = tabs.length ? tabs[0].id : null;
-      return { message: 'Tab excluída com sucesso.', nextTabId };
+      return { message: 'Tab excluída com sucesso.', nextTabId: tabs.length ? tabs[0].id : null };
     }
 
     const nextTabId = storage.deleteTab(id);
@@ -432,63 +537,67 @@ export const api = {
   // OFFERS (OFERTAS GARIMPADAS)
   // ============================================================================
 
-  async listOffers(tabId = null) {
-    if (isSupabaseConfigured && supabase) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Não autenticado');
+  /**
+   * Página de ofertas de uma aba (mais recentes primeiro).
+   * Devolve `hasMore` para o painel carregar a próxima página sob demanda.
+   */
+  async listOffers(tabId = null, { offset = 0, limit = PAGE_SIZE } = {}) {
+    if (ONLINE()) {
+      const userId = await currentUserId();
 
       let query = supabase
         .from('offers')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        .select(OFFER_COLUMNS)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit); // um a mais para saber se há próxima página
 
-      if (tabId) {
-        query = query.eq('tab_id', tabId);
-      }
+      if (tabId) query = query.eq('tab_id', tabId);
 
       const { data, error } = await query;
-      if (error) throw new Error(error.message || 'Erro ao listar ofertas.');
+      assertOk(error, 'Erro ao listar ofertas.');
 
-      return { offers: (data || []).map(formatOffer) };
+      const rows = data || [];
+      const hasMore = rows.length > limit;
+      return { offers: rows.slice(0, limit).map(formatOffer), hasMore };
     }
 
-    const offers = storage.getOffers(tabId);
-    return { offers };
+    return { offers: storage.getOffers(tabId), hasMore: false };
+  },
+
+  /** Todas as ofertas (de uma aba ou do acervo), em páginas, para backup e share. */
+  async fetchAllOffers(tabId = null, { max = 5000 } = {}) {
+    const all = [];
+    let offset = 0;
+    for (;;) {
+      const { offers, hasMore } = await this.listOffers(tabId, { offset, limit: 500 });
+      all.push(...offers);
+      offset += 500;
+      if (!hasMore || all.length >= max) break;
+    }
+    return all.slice(0, max);
   },
 
   async createOffer(offerData) {
-    if (isSupabaseConfigured && supabase) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Não autenticado');
+    if (!offerData?.name?.trim()) throw new AppError('Informe o nome da oferta.', { code: 'VALIDATION' });
 
-      const initialCount = Number(offerData.ads_count ?? offerData.initial_results ?? 1);
+    if (ONLINE()) {
+      const userId = await currentUserId();
 
       const payload = {
-        user_id: user.id,
+        ...buildOfferRow(offerData, { userId }),
         tab_id: offerData.tab_id || null,
-        name: offerData.name || 'Nova Oferta',
-        page_id: offerData.page_id || '',
-        ads_count: initialCount,
-        library_url: offerData.library_url || '',
-        landing_page: offerData.landing_page || offerData.destination_url || '',
-        affiliate_link: offerData.affiliate_link || '',
-        funnel_notes: buildNotesField(offerData),
-        status: offerData.status || 'testing',
-        niche: offerData.niche || 'Geral',
-        avatar_url: offerData.avatar_url || null,
-        history: normalizeHistory(offerData.history).length
-          ? normalizeHistory(offerData.history).map((h) => historyEntry(h.date, h.count))
-          : [historyEntry(todayIso(), initialCount)]
+        avatar_url: safeAvatar(offerData.avatar_url),
+        creative_thumb: safeCreativeThumb(offerData.creative_thumb)
       };
 
       const { data, error } = await supabase
         .from('offers')
         .insert([payload])
-        .select()
+        .select(OFFER_COLUMNS)
         .single();
 
-      if (error) throw new Error(error.message || 'Erro ao salvar oferta.');
+      assertOk(error, 'Erro ao salvar oferta.');
 
       return { message: 'Oferta salva com sucesso!', offer: formatOffer(data) };
     }
@@ -498,46 +607,38 @@ export const api = {
   },
 
   async updateOffer(id, offerData) {
-    if (isSupabaseConfigured && supabase) {
-      const initialCount = Number(offerData.ads_count ?? offerData.initial_results ?? 1);
+    if (!offerData?.name?.trim()) throw new AppError('Informe o nome da oferta.', { code: 'VALIDATION' });
 
+    if (ONLINE()) {
       // Preserva os metadados já gravados (ID da biblioteca, origem da captura)
       // que o formulário de edição não conhece.
-      const { data: current } = await supabase
+      const { data: current, error: curErr } = await supabase
         .from('offers')
         .select('funnel_notes')
         .eq('id', id)
-        .single();
+        .maybeSingle();
 
-      const existingMeta = decodeNotes(current?.funnel_notes).meta;
+      assertOk(curErr, 'Erro ao carregar a oferta.');
+      if (!current) throw new AppError('Oferta não encontrada.', { code: 'NOT_FOUND' });
+
+      const existingMeta = decodeNotes(current.funnel_notes).meta;
 
       const payload = {
-        name: offerData.name,
-        page_id: offerData.page_id || '',
-        ads_count: initialCount,
-        library_url: offerData.library_url || '',
-        landing_page: offerData.landing_page || offerData.destination_url || '',
-        affiliate_link: offerData.affiliate_link || '',
-        funnel_notes: buildNotesField(offerData, existingMeta),
-        status: offerData.status || 'testing',
-        niche: offerData.niche || 'Geral',
+        ...buildOfferRow(offerData, { existingMeta, includeHistoryFallback: false }),
         updated_at: new Date().toISOString()
       };
 
       if (offerData.tab_id) payload.tab_id = offerData.tab_id;
-      if (offerData.avatar_url) payload.avatar_url = offerData.avatar_url;
-      if (offerData.history) {
-        payload.history = normalizeHistory(offerData.history).map((h) => historyEntry(h.date, h.count));
-      }
+      if (offerData.avatar_url) payload.avatar_url = safeAvatar(offerData.avatar_url);
 
       const { data, error } = await supabase
         .from('offers')
         .update(payload)
         .eq('id', id)
-        .select()
+        .select(OFFER_COLUMNS)
         .single();
 
-      if (error) throw new Error(error.message || 'Erro ao atualizar oferta.');
+      assertOk(error, 'Erro ao atualizar oferta.');
 
       return { message: 'Oferta atualizada com sucesso!', offer: formatOffer(data) };
     }
@@ -547,9 +648,9 @@ export const api = {
   },
 
   async deleteOffer(id) {
-    if (isSupabaseConfigured && supabase) {
+    if (ONLINE()) {
       const { error } = await supabase.from('offers').delete().eq('id', id);
-      if (error) throw new Error(error.message || 'Erro ao excluir oferta.');
+      assertOk(error, 'Erro ao excluir oferta.');
       return { message: 'Oferta excluída com sucesso.' };
     }
 
@@ -558,19 +659,20 @@ export const api = {
   },
 
   async duplicateOffer(id, targetTabId) {
-    if (isSupabaseConfigured && supabase) {
+    if (ONLINE()) {
       const { data: original, error: getErr } = await supabase
         .from('offers')
-        .select('*')
+        .select(OFFER_COLUMNS)
         .eq('id', id)
-        .single();
+        .maybeSingle();
 
-      if (getErr || !original) throw new Error('Oferta original não encontrada.');
+      assertOk(getErr, 'Erro ao carregar a oferta.');
+      if (!original) throw new AppError('Oferta original não encontrada.', { code: 'NOT_FOUND' });
 
       const copyData = {
         ...original,
-        tab_id: targetTabId,
-        name: `${original.name} (Cópia)`
+        tab_id: targetTabId || original.tab_id,
+        name: clip(`${original.name} (Cópia)`, LIMITS.name)
       };
       delete copyData.id;
       delete copyData.created_at;
@@ -579,12 +681,12 @@ export const api = {
       const { data, error } = await supabase
         .from('offers')
         .insert([copyData])
-        .select()
+        .select(OFFER_COLUMNS)
         .single();
 
-      if (error) throw new Error(error.message || 'Erro ao duplicar oferta.');
+      assertOk(error, 'Erro ao duplicar oferta.');
 
-      return { message: 'Oferta duplicada com sucesso!', offer: data };
+      return { message: 'Oferta duplicada com sucesso!', offer: formatOffer(data) };
     }
 
     const offer = storage.duplicateOffer(id, targetTabId);
@@ -593,34 +695,28 @@ export const api = {
 
   /**
    * Registra (ou corrige) a contagem de anúncios ativos de um dia.
-   * É o que alimenta o gráfico de pirâmide da evolução da oferta.
+   * É o que alimenta o gráfico de evolução da oferta.
    */
   async addDailyResult(offerId, adsCount, customDate = null) {
-    const date = customDate || todayIso();
-    const parsedCount = Math.max(0, Number(adsCount) || 0);
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(customDate || '') ? customDate : todayIso();
+    const parsedCount = safeCount(adsCount, 0);
 
-    if (isSupabaseConfigured && supabase) {
+    if (ONLINE()) {
       const { data: offer, error: getErr } = await supabase
         .from('offers')
         .select('history, ads_count, status, funnel_notes')
         .eq('id', offerId)
-        .single();
+        .maybeSingle();
 
-      if (getErr || !offer) throw new Error('Oferta não encontrada.');
+      assertOk(getErr, 'Erro ao carregar a oferta.');
+      if (!offer) throw new AppError('Oferta não encontrada.', { code: 'NOT_FOUND' });
 
-      const history = upsertHistory(offer.history, date, parsedCount);
+      const history = upsertHistory(offer.history, date, parsedCount).slice(-LIMITS.historyEntries);
       const latest = history[history.length - 1];
 
-      const patch = {
-        history,
-        updated_at: new Date().toISOString()
-      };
-
-      // `ads_count` reflete sempre a medição mais recente do histórico.
+      const patch = { history, updated_at: new Date().toISOString() };
       if (latest) patch.ads_count = latest.count;
 
-      // Reclassifica pelo tempo de veiculação, a menos que o usuário tenha
-      // fixado o estágio à mão no formulário.
       const meta = decodeNotes(offer.funnel_notes).meta;
       if (!meta.status_manual) {
         patch.status = classifyStatus(resolveRunningDays(offer, meta));
@@ -630,10 +726,10 @@ export const api = {
         .from('offers')
         .update(patch)
         .eq('id', offerId)
-        .select()
+        .select(OFFER_COLUMNS)
         .single();
 
-      if (error) throw new Error(error.message || 'Erro ao registrar medição.');
+      assertOk(error, 'Erro ao registrar medição.');
 
       return {
         message: `Medição de ${date} atualizada para ${parsedCount} anúncios!`,
@@ -651,14 +747,15 @@ export const api = {
   },
 
   async deleteHistoryEntry(offerId, date) {
-    if (isSupabaseConfigured && supabase) {
+    if (ONLINE()) {
       const { data: offer, error: getErr } = await supabase
         .from('offers')
         .select('history')
         .eq('id', offerId)
-        .single();
+        .maybeSingle();
 
-      if (getErr || !offer) throw new Error('Oferta não encontrada.');
+      assertOk(getErr, 'Erro ao carregar a oferta.');
+      if (!offer) throw new AppError('Oferta não encontrada.', { code: 'NOT_FOUND' });
 
       const history = normalizeHistory(offer.history)
         .filter((h) => h.date !== date)
@@ -671,10 +768,10 @@ export const api = {
         .from('offers')
         .update(patch)
         .eq('id', offerId)
-        .select()
+        .select(OFFER_COLUMNS)
         .single();
 
-      if (error) throw new Error(error.message || 'Erro ao remover medição.');
+      assertOk(error, 'Erro ao remover medição.');
 
       return { message: `Medição de ${date} removida.`, offer: formatOffer(data) };
     }
@@ -687,95 +784,75 @@ export const api = {
   // SHARES (COMPARTILHAMENTOS)
   // ============================================================================
 
-  async createShare(tabId, tabName, offersSnapshot) {
-    const token = `share_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  /**
+   * Gera o link público de uma tab tirando um retrato das ofertas do momento.
+   * Só campos públicos entram no retrato (sem link de afiliado nem anotações).
+   */
+  async createShareLink(tabId) {
+    if (!tabId) throw new AppError('Selecione uma tab para compartilhar.', { code: 'VALIDATION' });
 
-    if (isSupabaseConfigured && supabase) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Não autenticado');
+    if (ONLINE()) {
+      const userId = await currentUserId();
+      const { tabs } = await this.listTabs();
+      const tab = (tabs || []).find((t) => t.id === tabId);
+      if (!tab) throw new AppError('Aba não encontrada.', { code: 'NOT_FOUND' });
+
+      const offers = await this.fetchAllOffers(tabId, { max: LIMITS.shareOffers });
+      const snapshot = offers.map(shareSnapshotEntry);
 
       const { data, error } = await supabase
         .from('shares')
         .insert([{
-          user_id: user.id,
-          share_token: token,
-          tab_id: tabId || null,
-          tab_name: tabName || 'Geral',
-          snapshot: offersSnapshot || []
+          user_id: userId,
+          share_token: randomToken(),
+          tab_id: tabId,
+          tab_name: clip(tab.name || 'Geral', LIMITS.tabName),
+          snapshot
         }])
-        .select()
+        .select('share_token')
         .single();
 
-      if (error) throw new Error(error.message || 'Erro ao gerar link de compartilhamento.');
+      assertOk(error, 'Erro ao gerar link de compartilhamento.');
 
-      return {
-        message: 'Link de compartilhamento gerado com sucesso!',
-        share: { token: data.share_token }
-      };
+      return { message: 'Link de compartilhamento gerado com sucesso!', token: data.share_token };
     }
 
-    const share = storage.createShare(tabId, tabName, offersSnapshot);
-    return { message: 'Link de compartilhamento gerado com sucesso!', share };
-  },
-
-  async getPublicShare(token) {
-    if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase
-        .from('shares')
-        .select('*')
-        .eq('share_token', token)
-        .single();
-
-      if (error || !data) {
-        throw new Error('Link de compartilhamento inválido ou expirado.');
-      }
-
-      return {
-        share: {
-          token: data.share_token,
-          tab_name: data.tab_name,
-          offers: data.snapshot,
-          created_at: data.created_at
-        }
-      };
-    }
-
-    const share = storage.getShare(token);
-    if (!share) {
-      throw new Error('Link de compartilhamento inválido ou expirado.');
-    }
-    return { share };
+    const token = storage.createShareLink(tabId);
+    return { message: 'Link de compartilhamento gerado com sucesso!', token };
   },
 
   /**
-   * Conteúdo exibido na página pública de compartilhamento (somente leitura).
+   * Conteúdo da página pública (somente leitura). Passa pela RPC
+   * get_share_by_token: o banco devolve só o share daquele token, se válido.
    */
   async publicOffers(token) {
-    const { share } = await this.getPublicShare(token);
-    return {
-      owner_name: share.owner_name || '',
-      tab_name: share.tab_name || 'Ofertas',
-      offers: (share.offers || []).map((offer) =>
-        offer.funnel_notes && !offer.meta ? formatOffer(offer) : offer
-      )
-    };
-  },
-
-  /**
-   * Gera o link público de uma tab tirando um retrato das ofertas do momento.
-   */
-  async createShareLink(tabId) {
-    if (isSupabaseConfigured && supabase) {
-      const { tabs } = await this.listTabs();
-      const tab = (tabs || []).find((t) => t.id === tabId);
-      const { offers } = await this.listOffers(tabId);
-
-      const res = await this.createShare(tabId, tab?.name || 'Geral', offers || []);
-      return { message: res.message, token: res.share.token };
+    const cleanToken = String(token || '').trim();
+    if (cleanToken.length < 20 || cleanToken.length > 128) {
+      throw new AppError('Link de compartilhamento inválido ou expirado.', { code: 'NOT_FOUND' });
     }
 
-    const share = storage.createShareLink(tabId);
-    return { message: 'Link de compartilhamento gerado com sucesso!', token: share.token };
+    if (ONLINE()) {
+      const { data, error } = await supabase.rpc('get_share_by_token', { token: cleanToken });
+
+      if (error) throw toUserError(error, 'Não foi possível abrir este link agora.');
+
+      const share = Array.isArray(data) ? data[0] : data;
+      if (!share) {
+        throw new AppError('Link de compartilhamento inválido ou expirado.', { code: 'NOT_FOUND' });
+      }
+
+      const snapshot = Array.isArray(share.snapshot) ? share.snapshot : [];
+      return {
+        owner_name: share.owner_name || '',
+        tab_name: share.tab_name || 'Ofertas',
+        offers: snapshot
+          .filter((o) => o && typeof o === 'object')
+          .map((offer) => (offer.funnel_notes && !offer.meta ? formatOffer(offer) : offer))
+      };
+    }
+
+    const share = storage.getPublicShare(cleanToken);
+    return { owner_name: share.owner_name || '', tab_name: share.tab_name || 'Ofertas', offers: share.offers || [] };
   },
 
   // ============================================================================
@@ -783,9 +860,9 @@ export const api = {
   // ============================================================================
 
   async exportData() {
-    if (isSupabaseConfigured && supabase) {
+    if (ONLINE()) {
       const { tabs } = await this.listTabs();
-      const { offers } = await this.listOffers();
+      const offers = await this.fetchAllOffers(null);
 
       return JSON.stringify(
         {
@@ -808,70 +885,61 @@ export const api = {
     try {
       parsed = JSON.parse(jsonText);
     } catch (e) {
-      throw new Error('Arquivo inválido: não é um JSON válido.');
+      throw new AppError('Arquivo inválido: não é um JSON válido.', { code: 'VALIDATION' });
     }
 
-    const importedTabs = Array.isArray(parsed.tabs) ? parsed.tabs : [];
-    const importedOffers = Array.isArray(parsed.offers) ? parsed.offers : [];
+    const importedTabs = Array.isArray(parsed?.tabs) ? parsed.tabs : [];
+    const importedOffers = Array.isArray(parsed?.offers) ? parsed.offers : [];
 
     if (!importedTabs.length && !importedOffers.length) {
-      throw new Error('Arquivo de backup vazio ou fora do formato do Mineraí.');
+      throw new AppError('Arquivo de backup vazio ou fora do formato do Mineraí.', { code: 'VALIDATION' });
     }
 
-    if (isSupabaseConfigured && supabase) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Não autenticado');
+    if (ONLINE()) {
+      const userId = await currentUserId();
 
       // Recria as tabs pelo nome e mapeia os IDs antigos para os novos.
       const { tabs: currentTabs } = await this.listTabs();
       const tabIdMap = {};
 
       for (const tab of importedTabs) {
-        const existing = (currentTabs || []).find(
-          (t) => t.name.toLowerCase() === String(tab.name || '').toLowerCase()
-        );
+        const wanted = clip(String(tab?.name || 'Importada').trim() || 'Importada', LIMITS.tabName);
+        const existing = (currentTabs || []).find((t) => t.name.toLowerCase() === wanted.toLowerCase());
         if (existing) {
           tabIdMap[tab.id] = existing.id;
         } else {
-          const res = await this.createTab({ name: tab.name || 'Importada' });
+          const res = await this.createTab({ name: wanted });
+          currentTabs.push(res.tab);
           tabIdMap[tab.id] = res.tab.id;
         }
       }
 
       const fallbackTabId = Object.values(tabIdMap)[0] || currentTabs?.[0]?.id || null;
 
-      const rows = importedOffers.map((offer) => {
-        const adsCount = Math.max(0, Number(offer.ads_count) || 0);
-        return {
-          user_id: user.id,
+      const rows = importedOffers
+        .filter((offer) => offer && typeof offer === 'object')
+        .map((offer) => ({
+          ...buildOfferRow(
+            {
+              ...offer,
+              // Backup com data de início vale mais que "dias rodando" (que
+              // congelaria na data da importação).
+              running_days: offer.start_date ? undefined : offer.running_days,
+              name: offer.name || 'Oferta Importada'
+            },
+            { userId }
+          ),
           tab_id: tabIdMap[offer.tab_id] || fallbackTabId,
-          name: offer.name || 'Oferta Importada',
-          page_id: String(offer.page_id || ''),
-          ads_count: adsCount,
-          library_url: offer.library_url || '',
-          landing_page: offer.landing_page || offer.destination_url || '',
-          affiliate_link: offer.affiliate_link || '',
-          // Quando o backup já traz a data de início, ela vale mais do que o
-          // número de dias (que ficaria congelado na data da importação).
-          funnel_notes: buildNotesField({
-            ...offer,
-            running_days: offer.start_date ? undefined : offer.running_days
-          }),
-          status: offer.status || 'testing',
-          niche: offer.niche || 'Geral',
-          avatar_url: offer.avatar_url || null,
-          history: normalizeHistory(offer.history).length
-            ? normalizeHistory(offer.history).map((h) => historyEntry(h.date, h.count))
-            : [historyEntry(todayIso(), adsCount)]
-        };
-      });
+          avatar_url: safeAvatar(offer.avatar_url),
+          creative_thumb: safeCreativeThumb(offer.creative_thumb)
+        }));
 
-      if (rows.length) {
-        const { error } = await supabase.from('offers').insert(rows);
-        if (error) throw new Error(error.message || 'Erro ao importar ofertas.');
+      for (let i = 0; i < rows.length; i += LIMITS.importBatch) {
+        const { error } = await supabase.from('offers').insert(rows.slice(i, i + LIMITS.importBatch));
+        assertOk(error, 'Erro ao importar ofertas.');
       }
 
-      return { tabs: importedTabs, offers: importedOffers };
+      return { tabs: importedTabs, offers: rows };
     }
 
     return storage.importData(jsonText);

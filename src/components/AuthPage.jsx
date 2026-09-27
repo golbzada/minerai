@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Brand from './Brand';
 import { api } from '../services/api';
 
-function getPasswordFeedback(password) {
+export function getPasswordFeedback(password) {
   if (!password) {
     return {
       percentage: 0,
@@ -57,9 +57,10 @@ function getPasswordFeedback(password) {
   };
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 export default function AuthPage({ onAuthenticated }) {
   const [mode, setMode] = useState('login'); // 'login' | 'register' | 'forgot'
-  const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -69,22 +70,43 @@ export default function AuthPage({ onAuthenticated }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
+  // E-mail que ficou aguardando confirmação: habilita o botão de reenviar.
+  const [pendingEmail, setPendingEmail] = useState('');
 
   const passwordFeedback = getPasswordFeedback(form.password);
   const isPasswordValid = passwordFeedback.isValid;
   const doPasswordsMatch = form.password !== '' && form.password === form.confirm_password;
-  const isPasswordStep = (mode === 'register') || (mode === 'forgot' && step === 2);
+  const isPasswordStep = mode === 'register';
 
-  function resetState() {
-    setStep(1);
-    setForm({
+  function resetState(keepEmail = false) {
+    setForm((prev) => ({
       name: '',
-      email: '',
+      email: keepEmail ? prev.email : '',
       password: '',
       confirm_password: ''
-    });
+    }));
     setError('');
     setNotice('');
+    setPendingEmail('');
+  }
+
+  function switchMode(next) {
+    setMode(next);
+    resetState(next === 'forgot');
+  }
+
+  async function handleResend() {
+    if (!pendingEmail) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.resendConfirmation(pendingEmail);
+      setNotice(res.message);
+    } catch (err) {
+      setError(err.message || 'Não foi possível reenviar o e-mail.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleSubmit(e) {
@@ -93,53 +115,44 @@ export default function AuthPage({ onAuthenticated }) {
     setError('');
     setNotice('');
 
+    const email = form.email.trim();
+
     try {
+      if (!EMAIL_RE.test(email)) throw new Error('Informe um e-mail válido.');
+
       if (mode === 'login') {
-        const res = await api.login({
-          email: form.email,
-          password: form.password
-        });
-        onAuthenticated(res.user);
-      } else if (mode === 'forgot' && step === 1) {
-        if (!form.email.trim()) throw new Error('Por favor, informe seu e-mail.');
-        const res = await api.startPasswordReset({ email: form.email });
-        setNotice(res.message);
-        setStep(2);
-      } else if (mode === 'forgot' && step === 2) {
-        if (!isPasswordValid) throw new Error('A nova senha ainda não atende a todos os requisitos de segurança.');
-        if (!doPasswordsMatch) throw new Error('A confirmação da nova senha não confere.');
-
-        const res = await api.completePasswordReset({
-          email: form.email,
-          password: form.password
-        });
-
-        if (res.autoLoggedIn && res.user) {
+        try {
+          const res = await api.login({ email, password: form.password });
           onAuthenticated(res.user);
-        } else {
-          setNotice(res.message || 'Senha alterada com sucesso! Faça login com sua nova senha.');
-          setMode('login');
-          setStep(1);
-          setForm((prev) => ({ ...prev, password: '', confirm_password: '' }));
+        } catch (err) {
+          if (err.code === 'EMAIL_NOT_CONFIRMED') setPendingEmail(email);
+          throw err;
         }
+      } else if (mode === 'forgot') {
+        const res = await api.requestPasswordReset(email);
+        setNotice(res.message);
+        setMode('login');
+        setForm((prev) => ({ ...prev, password: '', confirm_password: '' }));
       } else if (mode === 'register') {
         if (!form.name.trim()) throw new Error('Por favor, informe seu nome completo.');
-        if (!form.email.trim()) throw new Error('Por favor, informe seu e-mail.');
+        if (form.name.trim().length > 120) throw new Error('O nome pode ter no máximo 120 caracteres.');
         if (!isPasswordValid) throw new Error('A senha precisa atender a todos os requisitos de segurança.');
         if (!doPasswordsMatch) throw new Error('A confirmação da senha não confere.');
 
-        const res = await api.startRegistration({
+        const res = await api.register({
           name: form.name,
-          email: form.email,
+          email,
           password: form.password
         });
 
         if (res.user) {
           onAuthenticated(res.user);
         } else {
-          setNotice(res.message || 'Cadastro realizado com sucesso!');
+          // Confirmação de e-mail ligada: fica na tela de login aguardando o clique.
           setMode('login');
-          resetState();
+          setForm({ name: '', email, password: '', confirm_password: '' });
+          setPendingEmail(res.needsConfirmation ? email : '');
+          setNotice(res.message || 'Cadastro realizado! Confirme seu e-mail para entrar.');
         }
       }
     } catch (err) {
@@ -172,20 +185,14 @@ export default function AuthPage({ onAuthenticated }) {
             {mode === 'login'
               ? '• BEM-VINDO DE VOLTA'
               : mode === 'forgot'
-              ? `• RECUPERAÇÃO DE ACESSO ${step === 1 ? '1 DE 2' : '2 DE 2'}`
+              ? '• RECUPERAÇÃO DE ACESSO'
               : '• NOVO CADASTRO'}
           </p>
 
           <Brand />
 
           <h2>
-            {mode === 'login' ? (
-              ''
-            ) : mode === 'forgot' ? (
-              step === 1 ? 'Redefina sua senha.' : 'Crie sua nova senha.'
-            ) : (
-              'Crie sua conta.'
-            )}
+            {mode === 'login' ? '' : mode === 'forgot' ? 'Redefina sua senha.' : 'Crie sua conta.'}
           </h2>
 
           {/* LOGIN FORM */}
@@ -197,6 +204,7 @@ export default function AuthPage({ onAuthenticated }) {
                   type="email"
                   required
                   autoComplete="email"
+                  maxLength={254}
                   value={form.email}
                   placeholder="seu@email.com"
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
@@ -215,24 +223,17 @@ export default function AuthPage({ onAuthenticated }) {
                 />
               </label>
 
-              <button
-                className="forgot-link"
-                type="button"
-                onClick={() => {
-                  resetState();
-                  setMode('forgot');
-                }}
-              >
+              <button className="forgot-link" type="button" onClick={() => switchMode('forgot')}>
                 Esqueci minha senha
               </button>
             </>
           )}
 
-          {/* FORGOT STEP 1 */}
-          {mode === 'forgot' && step === 1 && (
+          {/* FORGOT: envia o link de redefinição por e-mail */}
+          {mode === 'forgot' && (
             <>
               <p className="form-hint">
-                Informe o e-mail da sua conta para definir sua nova senha de acesso.
+                Informe o e-mail da sua conta. Você receberá um link para criar uma nova senha.
               </p>
               <label className="field">
                 <span>E-mail</span>
@@ -240,65 +241,10 @@ export default function AuthPage({ onAuthenticated }) {
                   type="email"
                   required
                   autoComplete="email"
+                  maxLength={254}
                   value={form.email}
                   placeholder="seu@email.com"
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
-                />
-              </label>
-            </>
-          )}
-
-          {/* FORGOT STEP 2 (NOVA SENHA) */}
-          {mode === 'forgot' && step === 2 && (
-            <>
-              <p className="form-hint">
-                Redefinindo acesso para <strong>{form.email}</strong>.
-              </p>
-              <label className="field">
-                <span>Nova Senha</span>
-                <input
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  value={form.password}
-                  placeholder="Crie uma nova senha"
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
-                />
-              </label>
-
-              <div className="password-strength-container">
-                <div className="password-strength-header">
-                  <span className="strength-hint" style={{ color: passwordFeedback.isValid ? '#27AE60' : 'var(--text-secondary)' }}>
-                    {passwordFeedback.hint}
-                  </span>
-                  {form.password && (
-                    <span className="strength-label" style={{ color: passwordFeedback.color, fontWeight: 900 }}>
-                      {passwordFeedback.label}
-                    </span>
-                  )}
-                </div>
-                <div className="password-meter-bar">
-                  <div
-                    className="password-meter-fill"
-                    style={{
-                      width: `${passwordFeedback.percentage}%`,
-                      background: passwordFeedback.color
-                    }}
-                  />
-                </div>
-              </div>
-
-              <label className="field">
-                <span>Confirmar nova senha</span>
-                <input
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  value={form.confirm_password}
-                  placeholder="Repita sua nova senha"
-                  onChange={(e) =>
-                    setForm({ ...form, confirm_password: e.target.value })
-                  }
                 />
               </label>
             </>
@@ -313,6 +259,7 @@ export default function AuthPage({ onAuthenticated }) {
                   type="text"
                   required
                   autoComplete="name"
+                  maxLength={120}
                   value={form.name}
                   placeholder="Nome e sobrenome"
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -325,6 +272,7 @@ export default function AuthPage({ onAuthenticated }) {
                   type="email"
                   required
                   autoComplete="email"
+                  maxLength={254}
                   value={form.email}
                   placeholder="seu@email.com"
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
@@ -384,6 +332,12 @@ export default function AuthPage({ onAuthenticated }) {
           {notice && <p className="notice">{notice}</p>}
           {error && <p className="error">{error}</p>}
 
+          {pendingEmail && mode === 'login' && (
+            <button className="text-button" type="button" onClick={handleResend} disabled={loading}>
+              Não recebeu? Reenviar e-mail de confirmação
+            </button>
+          )}
+
           <button
             className="primary auth-submit-btn"
             type="submit"
@@ -394,11 +348,9 @@ export default function AuthPage({ onAuthenticated }) {
                 ? 'Aguarde...'
                 : mode === 'login'
                 ? 'Entrar'
-                : mode === 'forgot' && step === 2
-                ? 'Salvar Nova Senha'
-                : mode === 'register'
-                ? 'Criar Conta'
-                : 'Avançar'}
+                : mode === 'forgot'
+                ? 'Enviar link de redefinição'
+                : 'Criar Conta'}
             </span>
             <span className="auth-btn-arrow">-&gt;</span>
           </button>
@@ -406,10 +358,7 @@ export default function AuthPage({ onAuthenticated }) {
           <button
             className="text-button"
             type="button"
-            onClick={() => {
-              setMode(mode === 'login' ? 'register' : 'login');
-              resetState();
-            }}
+            onClick={() => switchMode(mode === 'login' ? 'register' : 'login')}
           >
             {mode === 'login'
               ? 'Ainda não tem conta? Cadastre-se'

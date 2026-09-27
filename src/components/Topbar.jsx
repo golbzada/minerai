@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Brand from './Brand';
 import ProfileModal from './ProfileModal';
+import { getAccess } from '../utils/plan';
 
 export default function Topbar({ user, onLogout, onExport, onUpdateUser, onOpenExtension }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -9,6 +10,7 @@ export default function Topbar({ user, onLogout, onExport, onUpdateUser, onOpenE
 
   const firstName = user?.name ? user.name.split(' ')[0] : 'Usuário';
   const initial = user?.name ? user.name[0].toUpperCase() : 'U';
+  const access = getAccess(user);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -49,9 +51,9 @@ export default function Topbar({ user, onLogout, onExport, onUpdateUser, onOpenE
                   <span className="online-indicator" title="Online" />
                 </div>
                 <div className="user-dropdown-details">
-                  <strong>{user?.name || 'Empreendedor Digital'}</strong>
-                  <small>{user?.email || 'voce@email.com'}</small>
-                  <span className="plan-badge-pill">⭐ Plano Anual Pro</span>
+                  <strong>{user?.name || 'Minerador'}</strong>
+                  <small>{user?.email || ''}</small>
+                  <span className="plan-badge-pill">{access.active ? '⭐' : '⏸️'} {access.label}</span>
                 </div>
               </div>
 

@@ -86,8 +86,9 @@ async function renovarSessao(session) {
     if (!nova?.access_token) return null;
 
     const { user } = await getCurrentUser();
-    await setStoredUser(nova.user || user, nova);
-    return nova;
+    const sessao = sanitizeSession(nova);
+    await setStoredUser(sanitizeUser(nova.user) || user, sessao);
+    return sessao;
   } catch (e) {
     console.warn('[Mineraí] Não foi possível renovar a sessão:', e.message);
     return null;
@@ -109,34 +110,37 @@ async function getAuthValida() {
   return { user, token: session.access_token };
 }
 
-// Verificar status de autenticação (exige access_token válido)
+// Verificar status de autenticação (exige access_token válido).
+// A sessão chega SÓ pelo bridge.js rodando no painel: o painel guarda a sessão
+// do Supabase no localStorage, nunca em cookie, então a leitura de cookies que
+// existia aqui nunca achava nada — e custava a permissão "cookies" na revisão
+// da Chrome Web Store.
 async function checkAuthStatus() {
   const { user, session } = await getCurrentUser();
   if (user && session?.access_token) {
     return { authenticated: true, user };
   }
-
-  // Tenta verificar se há sessão salva em cookies (localhost ou produção)
-  try {
-    for (const origin of DASHBOARD_URLS) {
-      const cookies = await chrome.cookies.getAll({ url: origin });
-      const authCookie = cookies.find(c => c.name.includes('supabase') || c.name.includes('auth') || c.name === 'minerai_user');
-      if (authCookie) {
-        try {
-          const parsed = JSON.parse(decodeURIComponent(authCookie.value));
-          if (parsed && (parsed.access_token || parsed.currentSession?.access_token)) {
-            const token = parsed.access_token || parsed.currentSession?.access_token;
-            const userData = parsed.user || parsed;
-            const sessionData = { access_token: token };
-            await setStoredUser(userData, sessionData);
-            return { authenticated: true, user: userData };
-          }
-        } catch (e) {}
-      }
-    }
-  } catch (e) {}
-
   return { authenticated: false };
+}
+
+/** Só o necessário sobre a pessoa: nada de plano ou dados de assinatura. */
+function sanitizeUser(source) {
+  if (!source || typeof source !== 'object' || !source.id) return null;
+  return {
+    id: String(source.id),
+    name: typeof source.name === 'string' ? source.name.slice(0, 120) : '',
+    email: typeof source.email === 'string' ? source.email.slice(0, 254) : ''
+  };
+}
+
+/** Só os campos da sessão que a extensão usa. */
+function sanitizeSession(source) {
+  if (!source || typeof source !== 'object' || typeof source.access_token !== 'string') return null;
+  return {
+    access_token: source.access_token,
+    refresh_token: typeof source.refresh_token === 'string' ? source.refresh_token : null,
+    expires_at: source.expires_at || null
+  };
 }
 
 // ==============================================================================
@@ -258,6 +262,12 @@ async function writeOffer(url, method, payload, token) {
 
     const errorText = await res.text();
 
+    // O RLS recusa a escrita quando o plano está inativo (ou a aba não é do
+    // usuário). É 401/403 também, mas não é token vencido — não adianta renovar.
+    if (/row-level security|42501|permission denied/i.test(errorText)) {
+      throw new Error('Seu plano está inativo. Ative um plano no painel Mineraí para voltar a minerar.');
+    }
+
     if (res.status === 401 || res.status === 403) {
       // Token vencido no meio da operação: renova uma vez e repete.
       if (!jaRenovou) {
@@ -270,6 +280,12 @@ async function writeOffer(url, method, payload, token) {
         }
       }
       throw new Error('Sessão expirada. Abra o painel Mineraí para reconectar.');
+    }
+
+    // Constraint do banco (tamanho ou valor fora do permitido).
+    if (/23514|violates check constraint/i.test(errorText)) {
+      console.error('Oferta recusada pelo banco:', errorText);
+      throw new Error('A oferta tem algum campo fora do limite permitido. Tente minerar de novo.');
     }
 
     // Coluna opcional inexistente: remove e tenta de novo.
@@ -1217,10 +1233,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Sessão só pode vir do bridge.js rodando no NOSSO painel. Um content script
+  // de outra origem (ou uma página qualquer) não consegue plantar sessão aqui.
+  const vemDoPainel = Boolean(
+    sender?.url && DASHBOARD_URLS.some((base) => sender.url.startsWith(`${base}/`))
+  );
+
   if (message.type === 'SET_AUTH_USER') {
-    setStoredUser(message.user, message.session).then(() => {
+    const user = sanitizeUser(message.user);
+    const session = sanitizeSession(message.session);
+    if (!vemDoPainel || !user || !session) {
+      sendResponse({ success: false, error: 'Origem não autorizada.' });
+      return true;
+    }
+    setStoredUser(user, session).then(() => {
       sendResponse({ success: true });
     });
+    return true;
+  }
+
+  if (message.type === 'CLEAR_AUTH_USER') {
+    if (!vemDoPainel) {
+      sendResponse({ success: false, error: 'Origem não autorizada.' });
+      return true;
+    }
+    setStoredUser(null, null).then(() => sendResponse({ success: true }));
     return true;
   }
 

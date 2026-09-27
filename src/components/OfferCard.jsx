@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Chart from './Chart';
 import { STATUS_CONFIG } from '../utils/metaParser';
 import { normalizeHistory, resolveRunningDays, resolveStatus, decodeNotes } from '../utils/offerMeta';
+import { safeHttpUrl, safeImageSrc, safeCreativeThumb } from '../utils/url';
 
 export default function OfferCard({
   offer,
@@ -11,14 +12,19 @@ export default function OfferCard({
   onAddResult,
   onOpenHistory,
   onDuplicate,
-  readOnly = false
+  readOnly = false,
+  // Plano inativo: o dono vê tudo, mas os botões de escrita somem.
+  locked = false
 }) {
   const [showNotes, setShowNotes] = useState(false);
 
+  const canWrite = !readOnly && !locked;
+
   // Link da biblioteca (o anúncio na Meta) e link da página de vendas são
   // coisas diferentes e ambos precisam ficar acessíveis no card.
-  const libraryUrl = offer.library_url || offer.destination_url || offer.landing_page;
-  const salesPageUrl = offer.destination_url || offer.landing_page || '';
+  // Tudo que vira href passa por safeHttpUrl: só http/https, nunca javascript:.
+  const libraryUrl = safeHttpUrl(offer.library_url || offer.destination_url || offer.landing_page);
+  const salesPageUrl = safeHttpUrl(offer.destination_url || offer.landing_page || '');
   const hasSalesPage = Boolean(salesPageUrl) && salesPageUrl !== libraryUrl;
 
   // A imagem principal do card é o CRIATIVO: é o que identifica a oferta de
@@ -27,8 +33,13 @@ export default function OfferCard({
   // Nesses casos o apelido é a identificação disponível — e serve tanto para
   // exibir quanto para buscar a foto no Graph.
   const numericPageId =
-    offer.page_id && offer.page_id !== 'N/A' && offer.page_id !== '4' ? offer.page_id : null;
-  const pageSlug = offer.meta?.page_slug || null;
+    offer.page_id && offer.page_id !== 'N/A' && offer.page_id !== '4' && /^\d+$/.test(offer.page_id)
+      ? offer.page_id
+      : null;
+  const pageSlug =
+    typeof offer.meta?.page_slug === 'string' && /^[\w.-]{1,80}$/.test(offer.meta.page_slug)
+      ? offer.meta.page_slug
+      : null;
   const graphKey = numericPageId || pageSlug || null;
 
   // O que mostrar na linha do ID. Ela nunca fica vazia: o ID numérico quando
@@ -41,13 +52,13 @@ export default function OfferCard({
       : { texto: '—', titulo: 'A Meta não expôs a identificação da página neste anúncio' };
 
   const advertiserPhoto =
-    offer.avatar_url ||
-    offer.image_url ||
-    (graphKey ? `https://graph.facebook.com/${graphKey}/picture?type=large` : null);
+    safeImageSrc(offer.avatar_url) ||
+    safeImageSrc(offer.image_url) ||
+    (graphKey ? `https://graph.facebook.com/${encodeURIComponent(graphKey)}/picture?type=large` : null);
 
-  // Só o criativo. A foto do anunciante fica de reserva para a oferta que
-  // ainda não tem criativo salvo — sobreposta ao frame ela poluía o card.
-  const mainSources = [offer.creative_thumb, advertiserPhoto].filter(Boolean);
+  // Só o criativo (data:image/*). A foto do anunciante fica de reserva para a
+  // oferta que ainda não tem criativo salvo.
+  const mainSources = [safeCreativeThumb(offer.creative_thumb), advertiserPhoto].filter(Boolean);
 
   const [mainIndex, setMainIndex] = useState(0);
   const mainImage = mainSources[mainIndex] || null;
@@ -70,10 +81,16 @@ export default function OfferCard({
 
   const historyCount = historyList.length;
 
+  // Sem link válido a área vira um bloco simples, em vez de um <a> sem href.
+  const PhotoWrapper = libraryUrl ? 'a' : 'div';
+  const photoProps = libraryUrl
+    ? { href: libraryUrl, target: '_blank', rel: 'noopener noreferrer', title: 'Abrir anúncio na Biblioteca de Anúncios da Meta' }
+    : { title: 'Esta oferta não tem link da Biblioteca de Anúncios' };
+
   return (
     <article className="offer-item">
       <div className="card">
-        {!readOnly && (
+        {canWrite && (
           <button
             className="delete-top"
             onClick={() => onDelete(offer)}
@@ -86,13 +103,7 @@ export default function OfferCard({
           </button>
         )}
 
-        <a
-          className="photo"
-          href={libraryUrl}
-          target="_blank"
-          rel="noreferrer"
-          title="Abrir anúncio na Biblioteca de Anúncios da Meta"
-        >
+        <PhotoWrapper className="photo" {...photoProps}>
           <span className="index">{String(index + 1).padStart(2, '0')}</span>
           {mainImage ? (
             <img
@@ -107,7 +118,7 @@ export default function OfferCard({
               {initial}
             </span>
           )}
-        </a>
+        </PhotoWrapper>
 
         <div className="content">
           <div>
@@ -157,7 +168,7 @@ export default function OfferCard({
                 className="sales-page-link"
                 href={salesPageUrl}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 title={salesPageUrl}
               >
                 🔗 Página de vendas
@@ -173,17 +184,17 @@ export default function OfferCard({
             </span>
 
             <div className="card-actions">
-              {!readOnly && (
+              {!readOnly && notesText && (
+                <button
+                  className={`action-btn-subtle ${showNotes ? 'active' : ''}`}
+                  onClick={() => setShowNotes(!showNotes)}
+                  title="Ver anotações de espionagem"
+                >
+                  📝
+                </button>
+              )}
+              {canWrite && (
                 <>
-                  {notesText && (
-                    <button
-                      className={`action-btn-subtle ${showNotes ? 'active' : ''}`}
-                      onClick={() => setShowNotes(!showNotes)}
-                      title="Ver anotações de espionagem"
-                    >
-                      📝
-                    </button>
-                  )}
                   <button
                     onClick={() => onEdit(offer)}
                     aria-label="Editar"
@@ -209,15 +220,17 @@ export default function OfferCard({
                   </button>
                 </>
               )}
-              <a
-                href={libraryUrl}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Abrir na Biblioteca de Anúncios"
-                title="Abrir na Biblioteca de Anúncios da Meta"
-              >
-                ↗
-              </a>
+              {libraryUrl && (
+                <a
+                  href={libraryUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Abrir na Biblioteca de Anúncios"
+                  title="Abrir na Biblioteca de Anúncios da Meta"
+                >
+                  ↗
+                </a>
+              )}
             </div>
           </div>
         </div>

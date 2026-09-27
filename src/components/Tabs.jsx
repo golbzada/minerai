@@ -7,7 +7,9 @@ export default function Tabs({
   onSelectTab,
   onNewTab,
   onRenameTab,
-  onDeleteTab
+  onDeleteTab,
+  // Plano inativo: sem criar, renomear ou excluir abas.
+  locked = false
 }) {
   const [editingTabId, setEditingTabId] = useState(null);
   const [editName, setEditName] = useState('');
@@ -73,7 +75,7 @@ export default function Tabs({
               {tab.name} <span className="count">{count}</span>
             </button>
 
-            {isActive && (
+            {isActive && !locked && (
               <div className="tab-menu-btns">
                 <button
                   className="tab-action-btn"
@@ -97,9 +99,11 @@ export default function Tabs({
         );
       })}
 
-      <button className="tab new-tab" onClick={onNewTab}>
-        + Nova Tab
-      </button>
+      {!locked && (
+        <button className="tab new-tab" onClick={onNewTab}>
+          + Nova Tab
+        </button>
+      )}
     </nav>
   );
 }

@@ -1,25 +1,47 @@
 import React, { useState } from 'react';
-import { storage } from '../services/storage';
+import { api } from '../services/api';
+import { getAccess } from '../utils/plan';
+import { formatCpfCnpj } from '../utils/metaParser';
 
 export default function ProfileModal({ user, onClose, onUpdateUser }) {
   const [name, setName] = useState(user?.name || '');
-  const [email, setEmail] = useState(user?.email || '');
-  const [savedNotice, setSavedNotice] = useState(false);
+  const [cpfCnpj, setCpfCnpj] = useState(user?.cpf_cnpj ? formatCpfCnpj(user.cpf_cnpj) : '');
+  const [savedNotice, setSavedNotice] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  function handleSave(e) {
+  const access = getAccess(user);
+
+  async function handleSave(e) {
     e.preventDefault();
-    const updated = {
-      ...user,
-      name: name.trim(),
-      email: email.trim()
-    };
-    storage.setUser(updated);
-    onUpdateUser(updated);
-    setSavedNotice(true);
-    setTimeout(() => {
-      setSavedNotice(false);
-      onClose();
-    }, 1000);
+    setError('');
+
+    const cleanName = name.trim();
+    if (!cleanName) {
+      setError('Informe seu nome.');
+      return;
+    }
+
+    const digits = cpfCnpj.replace(/\D/g, '');
+    if (digits && digits.length !== 11 && digits.length !== 14) {
+      setError('CPF precisa ter 11 dígitos e CNPJ 14 dígitos.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await api.updateProfile({ name: cleanName, cpf_cnpj: digits });
+      onUpdateUser({ ...user, ...res.user });
+      setSavedNotice(res.message || 'Alterações salvas com sucesso!');
+      setTimeout(() => {
+        setSavedNotice('');
+        onClose();
+      }, 1000);
+    } catch (err) {
+      setError(err.message || 'Não foi possível salvar.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -44,7 +66,7 @@ export default function ProfileModal({ user, onClose, onUpdateUser }) {
           </div>
           <div>
             <strong>{name || 'Usuário'}</strong>
-            <span className="plan-badge-inline">⭐ Plano Anual Pro</span>
+            <span className="plan-badge-inline">⭐ {access.label}</span>
           </div>
         </div>
 
@@ -54,6 +76,7 @@ export default function ProfileModal({ user, onClose, onUpdateUser }) {
             <input
               type="text"
               required
+              maxLength={120}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -61,33 +84,50 @@ export default function ProfileModal({ user, onClose, onUpdateUser }) {
 
           <label className="field">
             <span>E-mail da Conta</span>
+            {/* O e-mail é a identidade da conta no Supabase: trocar aqui não
+                mudaria o login. Fica só para consulta. */}
+            <input type="email" value={user?.email || ''} readOnly disabled />
+          </label>
+
+          <label className="field">
+            <span>CPF ou CNPJ (opcional)</span>
             <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              inputMode="numeric"
+              maxLength={18}
+              value={cpfCnpj}
+              placeholder="000.000.000-00"
+              onChange={(e) => setCpfCnpj(formatCpfCnpj(e.target.value))}
             />
           </label>
 
           <div className="plan-info-box">
             <div>
               <strong>Assinatura Atual:</strong>
-              <p>Plano Anual Mineraí (Acesso Ilimitado)</p>
+              <p>{access.label}</p>
             </div>
-            <span className="status-badge" style={{ color: '#00875a', background: '#e3fcef', borderColor: '#abf5d1' }}>
-              Ativo
+            <span
+              className="status-badge"
+              style={
+                access.active
+                  ? { color: '#00875a', background: '#e3fcef', borderColor: '#abf5d1' }
+                  : { color: '#b42318', background: '#fdf2f0', borderColor: '#f5c6cb' }
+              }
+            >
+              {access.active ? 'Ativo' : 'Inativo'}
             </span>
           </div>
         </div>
 
-        {savedNotice && <p className="notice">Alterações salvas com sucesso!</p>}
+        {savedNotice && <p className="notice">{savedNotice}</p>}
+        {error && <p className="error">{error}</p>}
 
         <div className="modal-actions">
           <button className="secondary" type="button" onClick={onClose}>
             Cancelar
           </button>
-          <button className="primary" type="submit">
-            Salvar Alterações
+          <button className="primary" type="submit" disabled={loading}>
+            {loading ? 'Salvando...' : 'Salvar Alterações'}
           </button>
         </div>
       </form>
