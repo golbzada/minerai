@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Mineraí",
-  "version": "1.23.0",
+  "version": "1.24.0",
   "description": "Garimpagem e inteligência de anúncios de alta performance direto da Biblioteca de Anúncios Meta.",
   "icons": {
     "16": "icons/icon16.png",
@@ -50,7 +50,8 @@
   "permissions": [
     "storage",
     "downloads",
-    "scripting"
+    "scripting",
+    "offscreen"
   ],
   "host_permissions": [
     "https://graph.facebook.com/*",

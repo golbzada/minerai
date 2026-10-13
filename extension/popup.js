@@ -142,7 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const concedida = await chrome.permissions.request({ origins: [origem] });
         if (!concedida) {
           mostrar('Sem a autorização não dá para ler a página.', 'erro');
-          ocupado(false, 'Baixar estrutura');
+          ocupado(false, 'Baixar página');
           return;
         }
       }
@@ -157,8 +157,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (resposta && resposta.success) {
         const d = resposta.data;
         mostrar(
-          `Pronto! Salvo em Downloads/${d.pasta} — página de ${d.tamanhoHtmlKb} KB, ` +
-          `${d.folhasInternas + d.folhasExternas} folhas de estilo e ${d.cores} cores no design system.`,
+          `Pronto! Salvo em Downloads/${d.pasta}: ${d.secoes || 0} seções, ${d.imagens || 0} imagens, ` +
+          `${d.videos || 0} vídeos e ${d.fontes || 0} fontes. Abra o PROMPT.md para modelar.`,
           'ok'
         );
       } else {
@@ -167,7 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
       mostrar(e.message || 'Falha inesperada ao capturar.', 'erro');
     } finally {
-      ocupado(false, 'Baixar estrutura');
+      ocupado(false, 'Baixar página');
     }
   }
 

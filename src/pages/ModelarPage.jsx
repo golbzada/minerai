@@ -14,6 +14,24 @@ import { loadModelagens, addModelagem, updateModelagem, removeModelagem, subscri
  * Quem captura é a extensão (o navegador não deixa o painel baixar página de
  * terceiro). O painel pede pelo bridge e recebe o resultado.
  */
+/** Uma linha com o que veio no pacote (capturas antigas só têm KB e cores). */
+function resumoDaCaptura(r) {
+  const kb = r.tamanhoZipKb || r.tamanhoHtmlKb || 0;
+  const tamanho = kb >= 1024 ? `${(kb / 1024).toFixed(1).replace('.', ',')} MB` : `${kb} KB`;
+  if (r.imagens == null) return `${tamanho} · ${r.cores || 0} cores`;
+  const partes = [
+    tamanho,
+    `${r.secoes || 0} seções`,
+    `${r.imagens} imagens`,
+    r.videos ? `${r.videos} vídeos` : null,
+    r.fontes ? `${r.fontes} fontes` : null,
+    r.carrosseis ? `${r.carrosseis} carrossel` : null,
+    r.sanfonas ? `${r.sanfonas} perguntas` : null,
+    r.remotos ? `${r.remotos} ficaram online` : null
+  ];
+  return partes.filter(Boolean).join(' · ');
+}
+
 export default function ModelarPage({ query }) {
   const data = useAppData();
   const { offers, setNotice, applyOffer } = data;
@@ -134,14 +152,15 @@ export default function ModelarPage({ query }) {
     setUrl(alvo);
     window.postMessage({ type: 'MINERAI_MODELAR', id, url: alvo }, window.location.origin);
 
-    // Sem resposta em 90s, marca como falha para a fila não ficar presa.
+    // Sem resposta em 10 minutos, marca como falha para a fila não ficar presa.
+    // (Página com muitos vídeos leva alguns minutos para baixar tudo.)
     setTimeout(() => {
       if (pedidoRef.current?.id === id) {
         pedidoRef.current = null;
         setCapturando(false);
         updateModelagem(item.id, { status: 'falhou', error: 'A extensão não respondeu a tempo. Tente de novo.', finishedAt: new Date().toISOString() });
       }
-    }, 90000);
+    }, 10 * 60 * 1000);
   }
 
   const visiveis = useMemo(() => {
@@ -160,20 +179,20 @@ export default function ModelarPage({ query }) {
     <div className="modelar-page">
       <div className="page-head">
         <div>
-          <p className="eyebrow">Referência de estrutura</p>
+          <p className="eyebrow">Página pronta para modelar</p>
           <h1 className="page-title">Modelar <em>página.</em></h1>
-          <p className="page-sub">Cole o endereço de uma página de vendas e baixe a estrutura com o design system (cores, fontes, espaçamentos) para montar a sua em cima.</p>
+          <p className="page-sub">Cole o endereço de uma página de vendas e receba a pasta completa: a página funcionando, com imagens, vídeos, fontes, carrossel e perguntas que abrem, mais o mapa das seções e o prompt para a sua IA modelar o seu produto em cima.</p>
         </div>
       </div>
 
       <PageGuide
         id="modelar"
-        why="Copie a estrutura de uma página de vendas que já vende (seções, cores, fontes) e monte a sua por cima, sem começar do zero."
+        why="Parta de uma página que já vende: a IA só troca o conteúdo pelo do seu produto, em vez de reconstruir tudo do zero (gasta bem menos)."
         steps={[
             <>Precisa da <strong>extensão</strong> instalada neste navegador.</>,
-            <>Cole o endereço da página de vendas. Se quiser, ligue a captura a uma oferta do acervo.</>,
-            <>Clique em <strong>Baixar estrutura</strong>. Uma aba abre, rola sozinha e fecha; o arquivo vai para a sua pasta <strong>Downloads</strong>.</>,
-            <>Marque as melhores como <strong>Referência ★</strong> para achar depois.</>
+            <>Cole o endereço da página de vendas e clique em <strong>Baixar página</strong>. Uma aba abre, rola sozinha e fecha; o .zip vai para a pasta <strong>Downloads</strong>.</>,
+            <>Descompacte e abra o <strong>index.html</strong> para conferir: a página abre igual, mesmo sem internet.</>,
+            <>Mande a pasta para a sua IA com o texto do <strong>PROMPT.md</strong>, preenchendo os dados do seu produto.</>
         ]}
       />
 
@@ -190,7 +209,7 @@ export default function ModelarPage({ query }) {
             <option value="">Sem oferta ligada</option>
             {offers.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
-          <button className="primary" type="submit" disabled={capturando}>{capturando ? 'Capturando...' : '📐 Baixar estrutura'}</button>
+          <button className="primary" type="submit" disabled={capturando}>{capturando ? 'Capturando...' : 'Baixar página'}</button>
         </form>
 
         {temExtensao === false && (
@@ -199,7 +218,7 @@ export default function ModelarPage({ query }) {
             <span>A captura roda pela extensão do Mineraí, no seu navegador. Se ela já está instalada, recarregue esta página (F5). Se não, instale em <button type="button" className="link-inline" onClick={() => navigate('/extensao')}>Extensão</button>.</span>
           </div>
         )}
-        {capturando && <p className="modelar-status">Abrindo a página numa aba, rolando até o fim e montando o pacote. Leva alguns segundos; a aba pisca e fecha sozinha.</p>}
+        {capturando && <p className="modelar-status">Abrindo a página numa aba, rolando até o fim e baixando imagens, vídeos e fontes. A aba pisca e fecha sozinha; página com muitos vídeos pode levar alguns minutos.</p>}
       </div>
 
       <div className="garimpo-bar">
@@ -232,7 +251,7 @@ export default function ModelarPage({ query }) {
               <a className="modelagem-url" href={safeHttpUrl(m.url) || '#'} target="_blank" rel="noopener noreferrer">{m.url}</a>
               <div className="modelagem-meta">
                 <span>Pedido {fmt(m.createdAt)}</span>
-                {m.result && <span>· {m.result.tamanhoZipKb || m.result.tamanhoHtmlKb} KB · {m.result.cores} cores · {(m.result.folhasInternas || 0) + (m.result.folhasExternas || 0)} folhas de estilo</span>}
+                {m.result && <span>· {resumoDaCaptura(m.result)}</span>}
                 {m.result?.pasta && <span>· Downloads/{m.result.pasta}</span>}
                 {m.offerId && (
                   <span>· oferta: <button type="button" className="link-inline" onClick={() => navigate(`/oferta/${m.offerId}`)}>{m.offerName || 'abrir'}</button></span>
@@ -258,6 +277,7 @@ export default function ModelarPage({ query }) {
         <p className="eyebrow">Em breve nesta aba</p>
         <ul>
           <li>Pré-visualizar a captura aqui dentro antes de baixar.</li>
+          <li>Trazer também o player de vídeo de plataformas (Vturb, Panda).</li>
           <li>Guardar as capturas na nuvem para reabrir de qualquer computador.</li>
           <li>Comparar a captura com a sua página pronta, lado a lado.</li>
         </ul>

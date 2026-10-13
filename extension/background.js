@@ -753,503 +753,23 @@ async function saveCapturedOffer(rawOfferData) {
 // ==============================================================================
 // MODELAR PÁGINA
 // ==============================================================================
-// Captura uma página de vendas para servir de REFERÊNCIA de estrutura.
+// Captura uma página de vendas e entrega uma pasta PRONTA para modelar: a
+// página com imagens, vídeos e fontes dentro dela, os movimentos (carrossel,
+// FAQ, abas) refeitos, o mapa das seções e o prompt para a IA.
+//
 // Roda no navegador do próprio usuário: a página é carregada com o IP e a
 // sessão dele, e a captura acontece DEPOIS do JavaScript montar tudo — por
 // isso pega página de funnel builder que um servidor externo receberia vazia.
+//
+// Três partes:
+//   captura.js         lê a página (injetado na aba da página)
+//   empacotador.js     baixa os arquivos e monta o zip (documento oculto)
+//   movimentos-pagina.js  vai dentro do zip e devolve os movimentos
+
+importScripts('captura.js');
 
 const MODELAR_ESPERA_MS = 3500;
 
-/**
- * Injetada na página capturada. Precisa ser autossuficiente: roda isolada,
- * sem acesso a nada deste arquivo.
- */
-async function capturarDaPagina() {
-  const base = document.baseURI;
-  const absoluta = (u, origem) => {
-    try {
-      return new URL(u, origem || base).href;
-    } catch (e) {
-      return u;
-    }
-  };
-
-  const espera = (ms) => new Promise((r) => setTimeout(r, ms));
-
-  // 1. Rolar a página inteira antes de capturar.
-  //    Página de vendas carrega imagem e revela seção conforme se desce. Sem
-  //    isso, só o primeiro visor era capturado e o resto vinha vazio.
-  const alturaJanela = window.innerHeight || 800;
-  let ultimaAltura = 0;
-
-  for (let volta = 0; volta < 60; volta += 1) {
-    const alturaTotal = document.body.scrollHeight;
-    const y = Math.min(volta * alturaJanela * 0.8, alturaTotal);
-    window.scrollTo(0, y);
-    await espera(140);
-
-    if (y >= alturaTotal) {
-      // Confere se a rolagem não fez a página crescer (carregamento contínuo).
-      if (alturaTotal === ultimaAltura) break;
-      ultimaAltura = alturaTotal;
-    }
-  }
-
-  window.scrollTo(0, 0);
-  await espera(500);
-
-  // 2. Destravar o que ficou invisível esperando animação.
-  //    O JavaScript é removido do arquivo final, então quem depende dele para
-  //    aparecer ficaria invisível para sempre.
-  let destravados = 0;
-  for (const el of Array.from(document.body.querySelectorAll('*'))) {
-    const s = getComputedStyle(el);
-
-    // display:none costuma ser conteúdo realmente desligado — não mexemos.
-    // Fixos são banner de cookie, menu flutuante, modal: também ficam de fora.
-    if (s.display === 'none' || s.position === 'fixed') continue;
-
-    const invisivel = s.opacity === '0' || s.visibility === 'hidden';
-    const deslocado = s.transform && s.transform !== 'none' && /matrix|translate/.test(s.transform);
-
-    if (invisivel) {
-      // A transição precisa morrer junto: viva, ela faria o valor novo só
-      // valer meio segundo depois, e o clone sairia ainda invisível.
-      el.style.setProperty('transition', 'none', 'important');
-      el.style.setProperty('animation', 'none', 'important');
-      el.style.setProperty('opacity', '1', 'important');
-      el.style.setProperty('visibility', 'visible', 'important');
-      destravados += 1;
-    }
-    if (invisivel && deslocado) {
-      el.style.setProperty('transform', 'none', 'important');
-    }
-  }
-
-  // 3. Marcar quem foi feito para animar na entrada.
-  //    O site anima esses blocos por JavaScript, que é removido do arquivo.
-  //    Marcando aqui, o pacote pode devolver o movimento com um script
-  //    próprio, curto e sem código de terceiro.
-  let animaveis = 0;
-  for (const el of Array.from(document.body.querySelectorAll('*'))) {
-    const s = getComputedStyle(el);
-    const transicao = s.transitionProperty || '';
-    const temTransicaoDeEntrada = /opacity|transform|all/.test(transicao) &&
-      parseFloat(s.transitionDuration) > 0;
-    const r = el.getBoundingClientRect();
-
-    // Só blocos de seção: elemento minúsculo animando polui e trava a leitura.
-    if (temTransicaoDeEntrada && r.width > 120 && r.height > 40) {
-      el.setAttribute('data-minerai-anima', '');
-      animaveis += 1;
-    }
-  }
-
-  // 4. Clonar já com tudo revelado
-  const clone = document.documentElement.cloneNode(true);
-  clone.querySelectorAll('script, noscript').forEach((el) => el.remove());
-
-  // 4a. Nada que execute ou redirecione sobrevive no arquivo salvo.
-  //     O LEIA-ME promete que "nada de terceiro é executado" ao abrir o
-  //     index.html localmente. Tirar só o <script> não bastava: atributos
-  //     onclick/onload, links javascript:, <meta http-equiv="refresh">,
-  //     <base> (que reapontaria todos os links) e srcdoc também executam
-  //     ou redirecionam. A CSP adicionada pelo background é a segunda barreira.
-  clone.querySelectorAll('base, meta[http-equiv]').forEach((el) => el.remove());
-  const atributosDeUrl = ['href', 'src', 'action', 'formaction', 'xlink:href', 'data', 'poster', 'ping'];
-  for (const el of Array.from(clone.querySelectorAll('*'))) {
-    for (const attr of Array.from(el.attributes)) {
-      const nome = attr.name.toLowerCase();
-      if (nome.startsWith('on') || nome === 'srcdoc') {
-        el.removeAttribute(attr.name);
-        continue;
-      }
-      if (atributosDeUrl.includes(nome)) {
-        const valor = (attr.value || '').trim().replace(/[\u0000- ]/g, '').toLowerCase();
-        if (valor.startsWith('javascript:') || valor.startsWith('vbscript:')) {
-          el.removeAttribute(attr.name);
-        }
-      }
-    }
-  }
-
-  clone.querySelectorAll('[src]').forEach((el) => {
-    const v = el.getAttribute('src');
-    if (v && !v.startsWith('data:')) el.setAttribute('src', absoluta(v));
-  });
-  clone.querySelectorAll('link[href], a[href]').forEach((el) => {
-    const v = el.getAttribute('href');
-    if (v && !v.startsWith('data:') && !v.startsWith('#')) el.setAttribute('href', absoluta(v));
-  });
-  clone.querySelectorAll('[srcset]').forEach((el) => {
-    const v = el.getAttribute('srcset') || '';
-    el.setAttribute(
-      'srcset',
-      v.split(',').map((parte) => {
-        const [u, d] = parte.trim().split(/\s+/);
-        return u ? absoluta(u) + (d ? ' ' + d : '') : parte;
-      }).join(', ')
-    );
-  });
-  clone.querySelectorAll('[style]').forEach((el) => {
-    const s = el.getAttribute('style') || '';
-    if (s.includes('url(')) {
-      el.setAttribute('style', s.replace(/url\((['"]?)([^'")]+)\1\)/g, (m, q, u) =>
-        u.startsWith('data:') ? m : `url("${absoluta(u)}")`));
-    }
-  });
-  // Imagem preguiçosa que não chegou a carregar guarda o endereço em data-*.
-  clone.querySelectorAll('img[data-src], img[data-lazy-src], source[data-srcset]').forEach((el) => {
-    const v = el.getAttribute('data-src') || el.getAttribute('data-lazy-src');
-    if (v && !el.getAttribute('src')) el.setAttribute('src', absoluta(v));
-    const ss = el.getAttribute('data-srcset');
-    if (ss && !el.getAttribute('srcset')) el.setAttribute('srcset', ss);
-  });
-
-  // 4. CSS. Aqui estava a maior perda: um `url(...)` dentro da folha de estilo
-  //    é relativo ao ENDEREÇO DA FOLHA, não ao HTML. Ao embutir o CSS sem
-  //    reescrever, toda imagem de fundo quebrava — e é assim que essas páginas
-  //    trazem a maioria das imagens.
-  const reescreverUrls = (css, origemDaFolha) =>
-    css.replace(/url\((['"]?)([^'")]+)\1\)/g, (m, q, u) => {
-      // chrome-extension:// vem de OUTRA extensão do navegador injetando
-      // fonte na página. Não é conteúdo do site e não existe fora daqui.
-      if (/^chrome-extension:/i.test(u)) return 'none';
-      if (/^(data:|https?:|\/\/|#)/i.test(u)) return m;
-      return `url("${absoluta(u, origemDaFolha)}")`;
-    });
-
-  const cssInterno = [];
-  const cssExterno = [];
-
-  for (const folha of Array.from(document.styleSheets)) {
-    const origem = folha.href || base;
-    try {
-      let txt = '';
-      for (const r of Array.from(folha.cssRules)) txt += r.cssText + '\n';
-      if (txt.trim()) cssInterno.push(reescreverUrls(txt, origem));
-    } catch (e) {
-      if (folha.href) cssExterno.push(folha.href);
-    }
-  }
-
-  // ---- Design system ----
-  const conta = { cor: {}, fundo: {}, fonte: {}, tamanho: {}, raio: {}, espaco: {} };
-  const somar = (mapa, valor) => {
-    if (!valor) return;
-    mapa[valor] = (mapa[valor] || 0) + 1;
-  };
-  const ignoraCor = (c) => !c || c === 'rgba(0, 0, 0, 0)' || c === 'transparent';
-
-  const visiveis = Array.from(document.body.querySelectorAll('*')).slice(0, 4000);
-  for (const el of visiveis) {
-    const r = el.getBoundingClientRect();
-    if (!r.width || !r.height) continue;
-    const s = getComputedStyle(el);
-    if (!ignoraCor(s.color)) somar(conta.cor, s.color);
-    if (!ignoraCor(s.backgroundColor)) somar(conta.fundo, s.backgroundColor);
-    somar(conta.fonte, s.fontFamily);
-    somar(conta.tamanho, s.fontSize);
-    if (s.borderRadius && s.borderRadius !== '0px') somar(conta.raio, s.borderRadius);
-    [s.paddingTop, s.paddingBottom, s.marginBottom].forEach((v) => {
-      if (v && v !== '0px') somar(conta.espaco, v);
-    });
-  }
-
-  const topo = (mapa, n) => Object.entries(mapa)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, n)
-    .map(([valor, vezes]) => ({ valor, vezes }));
-
-  return {
-    titulo: document.title || 'pagina',
-    url: location.href,
-    html: '<!doctype html>\n' + clone.outerHTML,
-    cssInterno,
-    cssExterno,
-    destravados,
-    animaveis,
-    alturaPagina: document.body.scrollHeight,
-    elementos: document.body.querySelectorAll('*').length,
-    tokens: {
-      cores: topo(conta.cor, 10),
-      fundos: topo(conta.fundo, 10),
-      fontes: topo(conta.fonte, 5),
-      tamanhos: topo(conta.tamanho, 10),
-      raios: topo(conta.raio, 6),
-      espacos: topo(conta.espaco, 10)
-    }
-  };
-}
-
-/**
- * Devolve o movimento de entrada das seções.
- *
- * O site anima esses blocos por JavaScript próprio, que é removido da captura.
- * Este script é curto, escrito aqui, e não roda nada de terceiro. Ele é
- * à prova de falha: o conteúdo já nasce visível no HTML, e só se o script
- * rodar é que ele esconde e revela conforme a rolagem. Se falhar, a página
- * fica estática — nunca em branco.
- */
-function scriptDeAnimacao(nonce) {
-  return `
-<style data-minerai="animacao">
-  [data-minerai-anima].minerai-oculto {
-    opacity: 0;
-    transform: translateY(24px);
-  }
-  [data-minerai-anima] {
-    transition: opacity .6s ease, transform .6s ease;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    [data-minerai-anima] { transition: none; }
-    [data-minerai-anima].minerai-oculto { opacity: 1; transform: none; }
-  }
-</style>
-<script data-minerai="animacao" nonce="${nonce}">
-(function () {
-  var alvos = document.querySelectorAll('[data-minerai-anima]');
-  if (!alvos.length || !('IntersectionObserver' in window)) return;
-
-  alvos.forEach(function (el) { el.classList.add('minerai-oculto'); });
-
-  var observador = new IntersectionObserver(function (entradas) {
-    entradas.forEach(function (entrada) {
-      if (!entrada.isIntersecting) return;
-      entrada.target.classList.remove('minerai-oculto');
-      observador.unobserve(entrada.target);
-    });
-  }, { rootMargin: '0px 0px -10% 0px', threshold: 0.05 });
-
-  alvos.forEach(function (el) { observador.observe(el); });
-
-  // Rede de segurança: passados 6 segundos, mostra tudo de qualquer jeito.
-  setTimeout(function () {
-    alvos.forEach(function (el) { el.classList.remove('minerai-oculto'); });
-  }, 6000);
-})();
-<\/script>`;
-}
-
-/**
- * Política de segurança gravada no próprio index.html capturado: só o script
- * de animação (identificado pelo nonce sorteado a cada captura) pode rodar.
- * Qualquer handler inline que tenha escapado da limpeza, qualquer <script>
- * reconstituído e qualquer envio de formulário ficam bloqueados pelo navegador.
- */
-function cspDaCaptura(nonce) {
-  const politica = [
-    "default-src * data: blob: 'unsafe-inline'",
-    `script-src 'nonce-${nonce}'`,
-    "object-src 'none'",
-    "base-uri 'none'",
-    "form-action 'none'"
-  ].join('; ');
-  return `<meta http-equiv="Content-Security-Policy" content="${politica}">`;
-}
-
-/** Nonce aleatório (base64 de 16 bytes) para a CSP da captura. */
-function gerarNonce() {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  let bin = '';
-  bytes.forEach((b) => { bin += String.fromCharCode(b); });
-  return btoa(bin);
-}
-
-/**
- * Texto que vai dentro de um <style>: um "</style" vindo do CSS do site
- * fecharia a tag cedo e o resto viraria HTML. O `\/` é escape válido em CSS.
- */
-function cssSeguroParaStyle(css) {
-  return String(css || '').replace(/<\/(style)/gi, '<\\/$1');
-}
-
-/** Texto que vai dentro de um comentário CSS não pode fechar o comentário. */
-function semFimDeComentario(texto) {
-  return String(texto || '').replace(/\*\//g, '* /');
-}
-
-/** Explica o que veio no pacote, para quem abrir o zip depois. */
-function montarLeiaMe(url, dados) {
-  return `MODELAR PÁGINA — Mineraí
-=========================
-
-Origem: ${url}
-Capturado em: ${new Date().toLocaleString('pt-BR')}
-
-O QUE TEM AQUI
---------------
-index.html         A página como ela aparece na tela, já com todo o CSS
-                   embutido. Abra direto no navegador.
-design-system.css  Cores, fontes, tamanhos, arredondamentos e espaçamentos
-                   que a página realmente usa, ordenados por frequência.
-
-COMO FOI FEITO
---------------
-A captura rola a página inteira antes de copiar, e acontece DEPOIS que o
-JavaScript termina de montar tudo — a partir do seu próprio navegador.
-Por isso funciona em página feita com construtor visual, que um download
-pelo servidor pegaria vazia.
-
-Os scripts foram removidos de propósito: ao abrir o arquivo localmente,
-nada de terceiro é executado e a página não tenta redirecionar. Como
-consequência, quem dependia de script para aparecer foi destravado na
-captura (${dados.destravados || 0} elemento(s)).
-
-As imagens continuam apontando para o site de origem — elas carregam
-enquanto o site estiver no ar.
-
-VEIO ALGUMA PARTE QUEBRADA?
----------------------------
-É normal em página muito dependente de script. Jogue esta pasta na IA que
-você usa e peça algo como:
-
-  "Esta pasta é a captura de uma página de vendas, para servir de
-   referência de estrutura. Conserte o que estiver quebrado e reorganize o
-   layout mantendo os mesmos blocos, proporções e o design system do
-   design-system.css. Depois troque os textos e imagens pelos meus."
-
-PARA QUE SERVE
---------------
-Referência de estrutura: blocos, proporções, espaçamentos e paleta, para
-você construir a sua página em cima. O conteúdo (textos, imagens, marca)
-é de quem publicou a página original.
-`;
-}
-
-/** Nome de arquivo seguro a partir do domínio. */
-function nomeDoSite(url) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '').replace(/[^a-z0-9.-]/gi, '_');
-  } catch (e) {
-    return 'pagina';
-  }
-}
-
-/** Monta o arquivo do design system a partir dos valores medidos na página. */
-function montarDesignSystem(tokens, url) {
-  const bloco = (titulo, itens, prefixo) => {
-    if (!itens.length) return '';
-    // Os valores vêm do getComputedStyle da página capturada: não podem
-    // carregar ';' ou '}' (fechariam a declaração) nem '*/'.
-    const valorSeguro = (v) => semFimDeComentario(String(v || '').replace(/[;{}]/g, ' ')).slice(0, 300);
-    const linhas = itens.map((t, i) => `  --${prefixo}-${i + 1}: ${valorSeguro(t.valor)};` +
-      ` /* usado ${Number(t.vezes) || 0}x */`).join('\n');
-    return `\n  /* ${titulo} */\n${linhas}\n`;
-  };
-
-  return `/* ==========================================================================
-   DESIGN SYSTEM EXTRAÍDO
-   Origem: ${semFimDeComentario(url)}
-   Gerado pelo Mineraí em ${new Date().toLocaleString('pt-BR')}
-
-   São os valores que a página realmente aplica na tela, ordenados por
-   frequência de uso. Servem de referência para você modelar a sua.
-   ========================================================================== */
-
-:root {
-${bloco('Cores de texto', tokens.cores, 'cor')}${bloco('Cores de fundo', tokens.fundos, 'fundo')}${bloco('Tipografia', tokens.fontes, 'fonte')}${bloco('Tamanhos de fonte', tokens.tamanhos, 'texto')}${bloco('Arredondamento', tokens.raios, 'raio')}${bloco('Espaçamentos', tokens.espacos, 'espaco')}}
-`;
-}
-
-// ==============================================================================
-// EMPACOTADOR ZIP
-// ==============================================================================
-// Antes os arquivos eram baixados soltos como data:text/plain, e o Chrome
-// renomeava tudo para .txt (por isso vinham "download.txt" e "download (1).txt").
-// Agora sai um .zip só, montado aqui mesmo — sem biblioteca externa, usando a
-// compressão nativa do navegador.
-
-const CRC_TABELA = (() => {
-  const t = new Uint32Array(256);
-  for (let i = 0; i < 256; i += 1) {
-    let c = i;
-    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    t[i] = c >>> 0;
-  }
-  return t;
-})();
-
-function crc32(bytes) {
-  let c = 0xffffffff;
-  for (let i = 0; i < bytes.length; i += 1) {
-    c = CRC_TABELA[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
-  }
-  return (c ^ 0xffffffff) >>> 0;
-}
-
-/** Compressão deflate nativa do Chrome — não precisa de biblioteca. */
-async function comprimir(bytes) {
-  const fluxo = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
-  return new Uint8Array(await new Response(fluxo).arrayBuffer());
-}
-
-/**
- * Monta um .zip a partir de [{ nome, texto }].
- */
-async function montarZip(arquivos) {
-  const codificador = new TextEncoder();
-  const partes = [];
-  const central = [];
-  let posicao = 0;
-
-  for (const arquivo of arquivos) {
-    const nome = codificador.encode(arquivo.nome);
-    const dados = codificador.encode(arquivo.texto);
-    const soma = crc32(dados);
-    const comprimido = await comprimir(dados);
-
-    const cabecalho = new DataView(new ArrayBuffer(30));
-    cabecalho.setUint32(0, 0x04034b50, true); // assinatura
-    cabecalho.setUint16(4, 20, true);         // versão mínima
-    cabecalho.setUint16(6, 0x0800, true);     // nomes em UTF-8
-    cabecalho.setUint16(8, 8, true);          // método deflate
-    cabecalho.setUint32(14, soma, true);
-    cabecalho.setUint32(18, comprimido.length, true);
-    cabecalho.setUint32(22, dados.length, true);
-    cabecalho.setUint16(26, nome.length, true);
-    partes.push(new Uint8Array(cabecalho.buffer), nome, comprimido);
-
-    const registro = new DataView(new ArrayBuffer(46));
-    registro.setUint32(0, 0x02014b50, true);
-    registro.setUint16(4, 20, true);
-    registro.setUint16(6, 20, true);
-    registro.setUint16(8, 0x0800, true);
-    registro.setUint16(10, 8, true);
-    registro.setUint32(16, soma, true);
-    registro.setUint32(20, comprimido.length, true);
-    registro.setUint32(24, dados.length, true);
-    registro.setUint16(28, nome.length, true);
-    registro.setUint32(42, posicao, true);
-    central.push({ registro: new Uint8Array(registro.buffer), nome });
-
-    posicao += 30 + nome.length + comprimido.length;
-  }
-
-  const inicioCentral = posicao;
-  let tamanhoCentral = 0;
-  for (const item of central) {
-    partes.push(item.registro, item.nome);
-    tamanhoCentral += 46 + item.nome.length;
-  }
-
-  const fim = new DataView(new ArrayBuffer(22));
-  fim.setUint32(0, 0x06054b50, true);
-  fim.setUint16(8, central.length, true);
-  fim.setUint16(10, central.length, true);
-  fim.setUint32(12, tamanhoCentral, true);
-  fim.setUint32(16, inicioCentral, true);
-  partes.push(new Uint8Array(fim.buffer));
-
-  return new Blob(partes, { type: 'application/zip' });
-}
-
-/**
- * Baixa um Blob. O service worker não tem URL.createObjectURL, então o
- * conteúdo vai como data: URI — e o tipo application/zip faz o Chrome
- * salvar com a extensão .zip correta.
- */
 // O Chrome ignora o `filename` quando o download vem de um data: URI e salva
 // como "download.zip". Este evento é a forma oficial de a extensão mandar no
 // nome — por isso o arquivo vinha sem o domínio.
@@ -1266,25 +786,69 @@ if (chrome.downloads?.onDeterminingFilename) {
   });
 }
 
-async function baixarBlob(blob, nomeArquivo) {
-  nomePendente = nomeArquivo;
-  const bytes = new Uint8Array(await blob.arrayBuffer());
+// O documento oculto (offscreen) é quem baixa os arquivos e monta o zip: o
+// service worker não cria URL de Blob e pode ser encerrado no meio de um
+// download grande. Um só por vez; criado na primeira captura.
+let criandoEmpacotador = null;
 
-  let binario = '';
-  const pedaco = 0x8000;
-  for (let i = 0; i < bytes.length; i += pedaco) {
-    binario += String.fromCharCode.apply(null, bytes.subarray(i, i + pedaco));
+async function garantirEmpacotador() {
+  const existentes = chrome.runtime.getContexts
+    ? await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] })
+    : [];
+  if (existentes.length) return;
+  if (!criandoEmpacotador) {
+    criandoEmpacotador = chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: ['BLOBS'],
+      justification: 'Montar o pacote do Modelar página: baixar imagens, vídeos e fontes e gerar o arquivo .zip.'
+    }).catch((e) => {
+      // Chrome sem getContexts: o documento pode já existir. Não é erro.
+      if (!/single offscreen|already/i.test(String(e && e.message))) throw e;
+    }).finally(() => {
+      criandoEmpacotador = null;
+    });
   }
+  await criandoEmpacotador;
+}
 
-  const uri = `data:application/zip;base64,${btoa(binario)}`;
+/** Manda o que a captura leu para o documento oculto e espera o zip. */
+async function empacotar(dados, url) {
+  await garantirEmpacotador();
+  const resposta = await chrome.runtime.sendMessage({ alvo: 'offscreen', type: 'MINERAI_EMPACOTAR', dados, url });
+  if (!resposta || !resposta.success) {
+    throw new Error((resposta && resposta.error) || 'Não foi possível montar o pacote.');
+  }
+  return resposta.data;
+}
 
+/** Baixa o zip pela URL de Blob do documento oculto e libera a memória depois. */
+function baixarPacote(blobUrl, nomeArquivo) {
+  nomePendente = nomeArquivo;
   return new Promise((resolve, reject) => {
-    chrome.downloads.download(
-      { url: uri, filename: nomeArquivo, saveAs: false },
-      (id) => (chrome.runtime.lastError
-        ? reject(new Error(chrome.runtime.lastError.message))
-        : resolve(id))
-    );
+    chrome.downloads.download({ url: blobUrl, filename: nomeArquivo, saveAs: false }, (id) => {
+      if (chrome.runtime.lastError || id === undefined) {
+        nomePendente = null;
+        reject(new Error(chrome.runtime.lastError?.message || 'O Chrome recusou o download.'));
+        return;
+      }
+      const liberar = () => {
+        chrome.runtime.sendMessage({ alvo: 'offscreen', type: 'MINERAI_LIBERAR', blobUrl }).catch(() => {});
+      };
+      // A URL só pode ser liberada quando o arquivo terminou de gravar.
+      const ouvinte = (delta) => {
+        if (delta.id !== id || !delta.state) return;
+        if (delta.state.current === 'complete' || delta.state.current === 'interrupted') {
+          chrome.downloads.onChanged.removeListener(ouvinte);
+          liberar();
+        }
+      };
+      chrome.downloads.onChanged.addListener(ouvinte);
+      setTimeout(() => {
+        chrome.downloads.onChanged.removeListener(ouvinte);
+        liberar();
+      }, 10 * 60 * 1000);
+      resolve(id);
+    });
   });
 }
 
@@ -1340,6 +904,7 @@ async function modelarPagina(url, opcoes) {
   const [abaOriginal] = await chrome.tabs.query({ active: true, currentWindow: true });
   const aba = await chrome.tabs.create({ url: alvo.href, active: true });
 
+  let dados;
   try {
     await esperarCarregar(aba.id);
     // Um respiro extra para animação e conteúdo que entra depois do load.
@@ -1350,59 +915,22 @@ async function modelarPagina(url, opcoes) {
       func: capturarDaPagina
     });
 
-    const dados = resultado?.result;
+    dados = resultado?.result;
     if (!dados) throw new Error('Não foi possível ler o conteúdo da página.');
-
-    // CSS de outro domínio: o background consegue baixar, a página não.
-    const externos = [];
-    for (const href of dados.cssExterno.slice(0, 25)) {
-      try {
-        const res = await fetch(href);
-        if (res.ok) externos.push(`/* ${href} */\n` + (await res.text()));
-      } catch (e) {
-        externos.push(`/* não foi possível baixar: ${href} */`);
-      }
-    }
-
-    const nonce = gerarNonce();
-    const css = cssSeguroParaStyle([...dados.cssInterno, ...externos].join('\n\n'));
-    const html = String(dados.html || '')
-      // A CSP precisa ser a primeira coisa do <head> para valer para tudo que vem depois.
-      .replace(/<head([^>]*)>/i, (m) => `${m}\n${cspDaCaptura(nonce)}`)
-      .replace(/<\/head>/i, `<style data-minerai="css-capturado">\n${css}\n</style>\n</head>`)
-      .replace(/<\/body>/i, `${scriptDeAnimacao(nonce)}\n</body>`);
-
-    const site = nomeDoSite(alvo.href);
-    const designSystem = montarDesignSystem(dados.tokens, alvo.href);
-    const pastaInterna = `${site}-${Date.now()}`;
-
-    // Os arquivos vão dentro de uma pasta DO ZIP, para não espalharem soltos
-    // ao descompactar. Já o download em si vai direto na pasta Downloads.
-    const zip = await montarZip([
-      { nome: `${pastaInterna}/index.html`, texto: html },
-      { nome: `${pastaInterna}/design-system.css`, texto: designSystem },
-      { nome: `${pastaInterna}/LEIA-ME.txt`, texto: montarLeiaMe(alvo.href, dados) }
-    ]);
-
-    const nomeZip = `${pastaInterna}.zip`;
-    await baixarBlob(zip, nomeZip);
-
-    return {
-      pasta: nomeZip,
-      titulo: dados.titulo,
-      tamanhoZipKb: Math.round(zip.size / 1024),
-      folhasInternas: dados.cssInterno.length,
-      folhasExternas: externos.length,
-      cores: dados.tokens.cores.length,
-      tamanhoHtmlKb: Math.round(html.length / 1024)
-    };
   } finally {
+    // A aba já pode fechar: daqui para frente o trabalho é baixar e empacotar.
     try {
       await chrome.tabs.remove(aba.id);
       // Devolve o foco para onde a pessoa estava.
       if (abaOriginal?.id) await chrome.tabs.update(abaOriginal.id, { active: true });
     } catch (e) {}
   }
+
+  const pacote = await empacotar(dados, alvo.href);
+  await baixarPacote(pacote.blobUrl, pacote.pasta);
+
+  const { blobUrl, ...resumo } = pacote;
+  return resumo;
 }
 
 /** Espera a aba terminar de carregar (com teto de tempo). */
@@ -1465,6 +993,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .then(res => sendResponse({ success: true, data: res }))
       .catch(err => sendResponse({ success: false, error: err.message }));
     return true;
+  }
+
+  if (message.type === 'MINERAI_EMPACOTANDO') {
+    sendResponse({ ok: true });
+    return false;
   }
 
   if (message.type === 'MODELAR_PAGINA') {

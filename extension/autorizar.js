@@ -150,9 +150,9 @@
         [
           ['strong', `Salvo em Downloads/${String(d.pasta || '')}`],
           ['ul', null, [
-            ['li', ` — a página, ${Number(d.tamanhoHtmlKb) || 0} KB, com o CSS embutido`, 'index.html'],
-            ['li', ` — ${Number(d.cores) || 0} cores, fontes e espaçamentos`, 'design-system.css'],
-            ['li', ' — o que veio no pacote e como usar', 'LEIA-ME.txt']
+            ['li', ` — a página pronta, com ${Number(d.imagens) || 0} imagens, ${Number(d.videos) || 0} vídeos e ${Number(d.fontes) || 0} fontes`, 'index.html'],
+            ['li', ` — mapa das ${Number(d.secoes) || 0} seções, para a IA ler rápido`, 'ESTRUTURA.md'],
+            ['li', ' — o pedido pronto para a IA modelar o seu produto', 'PROMPT.md']
           ]]
         ],
         'ok'
