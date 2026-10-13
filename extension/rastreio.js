@@ -259,6 +259,11 @@ function avisarFimDaRodada(estado) {
  */
 async function rastreioTick({ forcar = false, pausa = pausaPadrao } = {}) {
   if (rastreioRodando) return;
+  // O Radar está lendo a Biblioteca: não ler em dobro. Tenta de novo logo.
+  if (typeof radarRodando !== 'undefined' && radarRodando) {
+    chrome.alarms.create(RASTREIO_CONTINUAR, { delayInMinutes: 1 });
+    return;
+  }
   rastreioRodando = true;
   try {
     let estado = await lerEstadoRastreio();
@@ -392,7 +397,11 @@ chrome.runtime.onInstalled.addListener(agendarRastreio);
 chrome.runtime.onStartup.addListener(agendarRastreio);
 
 chrome.alarms.onAlarm.addListener((alarme) => {
-  if (alarme.name === RASTREIO_ALARME || alarme.name === RASTREIO_CONTINUAR) rastreioTick();
+  if (alarme.name === RASTREIO_ALARME || alarme.name === RASTREIO_CONTINUAR) {
+    // Primeiro as ofertas salvas; o Radar só sai quando a rodada delas de
+    // hoje terminou (ele mesmo confere).
+    rastreioTick().then(() => (typeof radarTick === 'function' ? radarTick() : undefined));
+  }
 });
 
 chrome.notifications.onClicked.addListener((id) => {

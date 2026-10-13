@@ -234,6 +234,49 @@
     );
   });
 
+  // 4. Radar do nicho: o painel lista/salva buscas e pede "rodar agora".
+  //    Só passam tipos RADAR_*; qualquer outro pedido é recusado aqui.
+  const RADAR_PERMITIDOS = ['RADAR_LISTAR', 'RADAR_SALVAR_BUSCAS', 'RADAR_RODAR'];
+
+  function responderRadar(id, resposta) {
+    window.postMessage({ type: 'MINERAI_RADAR_RESPOSTA', id, resposta }, window.location.origin);
+  }
+
+  /** Repassa ao background só pedidos RADAR_* e devolve a resposta ao painel. */
+  function encaminharRadar(id, pedidoBruto) {
+    const pedido = pedidoBruto && typeof pedidoBruto === 'object' ? pedidoBruto : {};
+    if (!RADAR_PERMITIDOS.includes(pedido.type)) {
+      responderRadar(id, { success: false, error: 'Pedido não permitido.' });
+      return;
+    }
+    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id) {
+      responderRadar(id, { success: false, error: 'EXTENSAO_AUSENTE' });
+      return;
+    }
+    const mensagem = pedido.type === 'RADAR_SALVAR_BUSCAS'
+      ? { type: pedido.type, buscas: Array.isArray(pedido.buscas) ? pedido.buscas.slice(0, 20) : [] }
+      : { type: pedido.type };
+    try {
+      chrome.runtime.sendMessage(mensagem, (resposta) => {
+        if (chrome.runtime?.lastError) {
+          responderRadar(id, { success: false, error: 'EXTENSAO_AUSENTE' });
+          return;
+        }
+        responderRadar(id, resposta || { success: false });
+      });
+    } catch (e) {
+      responderRadar(id, { success: false, error: 'EXTENSAO_AUSENTE' });
+    }
+  }
+
+  window.addEventListener('message', (event) => {
+    if (event.origin !== window.location.origin) return;
+    if (!mensagemDoPainel(event)) return;
+    const dado = event.data;
+    if (dado.type !== 'MINERAI_RADAR') return;
+    encaminharRadar(dado.id, dado.pedido);
+  });
+
   // Re-sincronizar periodicamente enquanto o dashboard estiver aberto
   syncInterval = setInterval(syncSession, 6000);
 })();

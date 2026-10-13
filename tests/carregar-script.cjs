@@ -14,8 +14,14 @@ function chromeFalso(sobrescrever = {}) {
     get: (alvo, nome) => (nome === 'then' ? undefined : fazNada),
     apply: () => undefined
   });
+  const objetoSimples = (v) => v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype;
   return new Proxy({}, {
-    get: (alvo, nome) => (nome in sobrescrever ? sobrescrever[nome] : fazNada)
+    get: (alvo, nome) => {
+      if (!(nome in sobrescrever)) return fazNada;
+      const v = sobrescrever[nome];
+      // Objeto aninhado: o que não foi dado continua "fazendo nada".
+      return objetoSimples(v) ? chromeFalso(v) : v;
+    }
   });
 }
 
