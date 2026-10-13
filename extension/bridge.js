@@ -242,17 +242,15 @@
     window.postMessage({ type: 'MINERAI_RADAR_RESPOSTA', id, resposta }, window.location.origin);
   }
 
-  window.addEventListener('message', (event) => {
-    if (event.origin !== window.location.origin || !mensagemDoPainel(event)) return;
-    const dado = event.data;
-    if (dado.type !== 'MINERAI_RADAR') return;
-    const pedido = dado.pedido && typeof dado.pedido === 'object' ? dado.pedido : {};
+  /** Repassa ao background só pedidos RADAR_* e devolve a resposta ao painel. */
+  function encaminharRadar(id, pedidoBruto) {
+    const pedido = pedidoBruto && typeof pedidoBruto === 'object' ? pedidoBruto : {};
     if (!RADAR_PERMITIDOS.includes(pedido.type)) {
-      responderRadar(dado.id, { success: false, error: 'Pedido não permitido.' });
+      responderRadar(id, { success: false, error: 'Pedido não permitido.' });
       return;
     }
     if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id) {
-      responderRadar(dado.id, { success: false, error: 'EXTENSAO_AUSENTE' });
+      responderRadar(id, { success: false, error: 'EXTENSAO_AUSENTE' });
       return;
     }
     const mensagem = pedido.type === 'RADAR_SALVAR_BUSCAS'
@@ -261,14 +259,22 @@
     try {
       chrome.runtime.sendMessage(mensagem, (resposta) => {
         if (chrome.runtime?.lastError) {
-          responderRadar(dado.id, { success: false, error: 'EXTENSAO_AUSENTE' });
+          responderRadar(id, { success: false, error: 'EXTENSAO_AUSENTE' });
           return;
         }
-        responderRadar(dado.id, resposta || { success: false });
+        responderRadar(id, resposta || { success: false });
       });
     } catch (e) {
-      responderRadar(dado.id, { success: false, error: 'EXTENSAO_AUSENTE' });
+      responderRadar(id, { success: false, error: 'EXTENSAO_AUSENTE' });
     }
+  }
+
+  window.addEventListener('message', (event) => {
+    if (event.origin !== window.location.origin) return;
+    if (!mensagemDoPainel(event)) return;
+    const dado = event.data;
+    if (dado.type !== 'MINERAI_RADAR') return;
+    encaminharRadar(dado.id, dado.pedido);
   });
 
   // Re-sincronizar periodicamente enquanto o dashboard estiver aberto
