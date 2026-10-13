@@ -1084,3 +1084,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 });
+
+// Rastreio diário das ofertas (alarmes, fila, leitura da Biblioteca).
+importScripts('rastreio.js');

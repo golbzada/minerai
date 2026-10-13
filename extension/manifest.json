@@ -53,9 +53,12 @@
     "storage",
     "downloads",
     "scripting",
-    "offscreen"
+    "offscreen",
+    "alarms",
+    "notifications"
   ],
   "host_permissions": [
+    "https://www.facebook.com/*",
     "https://graph.facebook.com/*",
     "https://*.fbcdn.net/*",
     "https://*.cdninstagram.com/*",

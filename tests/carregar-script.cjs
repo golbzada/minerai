@@ -22,7 +22,7 @@ function chromeFalso(sobrescrever = {}) {
 function carregarScript(relativo, extras = {}) {
   const contexto = vm.createContext({
     console, URLSearchParams, URL, Date, setTimeout, clearTimeout, setInterval, clearInterval,
-    atob, btoa, TextEncoder, TextDecoder,
+    atob, btoa, TextEncoder, TextDecoder, AbortController,
     ...extras
   });
   contexto.self = contexto;
