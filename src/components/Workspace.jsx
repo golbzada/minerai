@@ -7,6 +7,7 @@ import { api } from '../services/api';
 import { loadModelagens } from '../utils/modelagens';
 import GarimpoPage from '../pages/GarimpoPage';
 import FavoritosPage from '../pages/FavoritosPage';
+import RadarPage from '../pages/RadarPage';
 import OfferPage from '../pages/OfferPage';
 import ModelarPage from '../pages/ModelarPage';
 import InsightsPage from '../pages/InsightsPage';
@@ -101,6 +102,9 @@ function Shell() {
   switch (route.page) {
     case 'oferta':
       pageEl = <OfferPage id={route.params.id} />;
+      break;
+    case 'radar':
+      pageEl = <RadarPage />;
       break;
     case 'favoritos':
       pageEl = <FavoritosPage />;

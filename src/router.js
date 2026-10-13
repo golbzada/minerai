@@ -33,6 +33,7 @@ export function useRoute() {
 
 export const PAGES = {
   garimpo: { path: '/garimpo', label: 'Garimpo', icon: '⛏️', hint: 'Ofertas por tab, lista e esteira' },
+  radar: { path: '/radar', label: 'Radar', icon: '📡', hint: 'Ofertas novas escalando no seu nicho' },
   favoritos: { path: '/favoritos', label: 'Favoritos', icon: '★', hint: 'Suas esteiras de ofertas favoritas' },
   modelar: { path: '/modelar', label: 'Modelar', icon: '📐', hint: 'Capturas de páginas' },
   inteligencia: { path: '/inteligencia', label: 'Inteligência', icon: '📊', hint: 'Nichos, anunciantes, tendências' },
@@ -42,7 +43,7 @@ export const PAGES = {
   conta: { path: '/conta', label: 'Conta e plano', icon: '⭐', hint: 'Perfil, plano e uso' }
 };
 
-export const PAGE_ORDER = ['garimpo', 'favoritos', 'modelar', 'inteligencia', 'alertas', 'compartilhar', 'extensao', 'conta'];
+export const PAGE_ORDER = ['garimpo', 'radar', 'favoritos', 'modelar', 'inteligencia', 'alertas', 'compartilhar', 'extensao', 'conta'];
 
 /** Converte o caminho atual em { page, params, query }. */
 export function matchRoute(path) {
