@@ -6,7 +6,7 @@
  * de funnel_notes, o mesmo lugar de start_date e library_id. Assim o painel
  * ganha as funções novas sem migração no Supabase.
  */
-import { decodeNotes, normalizeHistory, resolveRunningDays, resolveStatus } from './offerMeta';
+import { decodeNotes, normalizeHistory, resolveRunningDays, resolveStatus } from './offerMeta.js';
 
 export const STAGES = [
   { key: 'radar', label: 'Radar', hint: 'Acabou de ser garimpada' },
@@ -151,6 +151,27 @@ export function saveAlertPrefs(prefs) {
  *  - queda: a última medição caiu Y% em relação à anterior
  *  - estagio: o estágio automático mudou e o card ainda mostra o antigo no banco
  */
+// Eventos que o rastreio diário da extensão grava em `track_events` (ver
+// extension/rastreio-regras.js). Cada um fica visível por 7 dias.
+const TRACK_EVENT_DAYS = 7;
+const TRACK_SEVERITY = { morreu: 'alta', escalou: 'alta', decaindo: 'media', criativo_saiu: 'baixa', voltou: 'baixa' };
+
+function fmtDiaMes(iso) {
+  const [, m, d] = String(iso || '').match(/^\d{4}-(\d{2})-(\d{2})/) || [];
+  return d ? `${d}/${m}` : '';
+}
+
+function trackEventText(e) {
+  switch (e.tipo) {
+    case 'escalou': return `foi de ${e.de} para ${e.para} anúncios ativos.`;
+    case 'decaindo': return `caiu de ${e.de} para ${e.para} anúncios ativos.`;
+    case 'morreu': return `o anunciante parou todos os anúncios (visto em ${fmtDiaMes(e.data)}).`;
+    case 'criativo_saiu': return `o anúncio que você salvou parou, mas o anunciante segue com ${e.para} anúncios.`;
+    case 'voltou': return `o anunciante voltou com ${e.para} anúncios.`;
+    default: return '';
+  }
+}
+
 export function computeAlerts(offers, prefs = loadAlertPrefs()) {
   const alerts = [];
   const now = new Date();
@@ -159,12 +180,23 @@ export function computeAlerts(offers, prefs = loadAlertPrefs()) {
     const extras = getExtras(o);
     if (extras.stage === 'descartada') return;
 
+    const meta = offerMeta(o);
     const history = normalizeHistory(o.history);
     const last = history[history.length - 1];
     const prev = history[history.length - 2];
     const sinceLast = last ? daysBetweenIso(last.date, now) : null;
 
-    if (sinceLast === null || sinceLast >= prefs.diasSemMedicao) {
+    // Medida pelo rastreio automático nos últimos 2 dias: não pede medição à mão.
+    const sinceTracked = daysBetweenIso(meta.tracked_at, now);
+    const trackedRecently = sinceTracked !== null && sinceTracked <= 2;
+
+    (Array.isArray(meta.track_events) ? meta.track_events : []).forEach((e) => {
+      const age = daysBetweenIso(e?.data, now);
+      if (age === null || age > TRACK_EVENT_DAYS || !TRACK_SEVERITY[e.tipo]) return;
+      alerts.push({ type: e.tipo, severity: TRACK_SEVERITY[e.tipo], offer: o, text: trackEventText(e) });
+    });
+
+    if (!trackedRecently && (sinceLast === null || sinceLast >= prefs.diasSemMedicao)) {
       alerts.push({
         type: 'medicao',
         severity: 'media',
@@ -180,7 +212,10 @@ export function computeAlerts(offers, prefs = loadAlertPrefs()) {
       alerts.push({ type: 'longa', severity: 'alta', offer: o, text: `Já são ${days} dias rodando.` });
     }
 
-    if (last && prev && prev.count > 0) {
+    // Com medições do anunciante, quem avisa queda é o "Decaindo" do rastreio
+    // (que nunca compara número novo com o antigo do criativo).
+    const temAnunciante = history.some((h) => h.kind === 'anunciante');
+    if (!temAnunciante && last && prev && prev.count > 0) {
       const drop = Math.round(((prev.count - last.count) / prev.count) * 100);
       if (drop >= prefs.quedaPercentual) {
         alerts.push({
@@ -192,9 +227,8 @@ export function computeAlerts(offers, prefs = loadAlertPrefs()) {
       }
     }
 
-    const meta = offerMeta(o);
     const shown = resolveStatus(o);
-    if (!meta.status_manual && o.status && shown !== o.status) {
+    if (!meta.status_manual && !meta.dead_since && o.status && shown !== o.status) {
       alerts.push({ type: 'estagio', severity: 'baixa', offer: o, text: `Estágio avançou para "${shown}" pelo tempo rodando.` });
     }
   });
@@ -204,6 +238,11 @@ export function computeAlerts(offers, prefs = loadAlertPrefs()) {
 }
 
 export const ALERT_LABELS = {
+  morreu: { label: 'Morreu', icon: '⛔' },
+  escalou: { label: 'Escalou', icon: '🚀' },
+  decaindo: { label: 'Decaindo', icon: '📉' },
+  criativo_saiu: { label: 'Criativo saiu do ar', icon: '🎬' },
+  voltou: { label: 'Voltou ao ar', icon: '🔁' },
   medicao: { label: 'Precisa de medição', icon: '📏' },
   longa: { label: 'Longa duração', icon: '⏳' },
   queda: { label: 'Queda de anúncios', icon: '📉' },
