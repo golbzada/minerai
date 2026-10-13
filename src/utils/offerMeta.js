@@ -132,6 +132,13 @@ function mergeMeta(offer, extra) {
 export function resolveRunningDays(offer, meta) {
   const info = mergeMeta(offer, meta);
 
+  // Oferta morta: os dias param na data em que ela saiu do ar.
+  const start = isoToDate(info.start_date);
+  const dead = isoToDate(info.dead_since);
+  if (start && dead) {
+    return Math.max(1, Math.round((dead - start) / DAY_MS) + 1);
+  }
+
   const fromStart = startDateToDays(info.start_date);
   if (fromStart) return fromStart;
 
@@ -157,8 +164,12 @@ export function normalizeHistory(history) {
     const rawDate = item.date || item.result_date || item.created_at;
     const date = typeof rawDate === 'string' ? rawDate.slice(0, 10) : todayIso();
     const count = Number(item.count ?? item.ads_count ?? item.results_count ?? 0);
+    const entry = { date, count: isNaN(count) ? 0 : count };
+    // `kind: 'anunciante'` = total de anúncios do anunciante (rastreio diário).
+    // Sem `kind` = medição antiga ("anúncios usam este criativo").
+    if (typeof item.kind === 'string') entry.kind = item.kind;
 
-    byDate.set(date, { date, count: isNaN(count) ? 0 : count });
+    byDate.set(date, entry);
   });
 
   return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
@@ -168,18 +179,20 @@ export function normalizeHistory(history) {
  * Grava a entrada com as duas nomenclaturas para continuar compatível com
  * qualquer parte do app (e com backups antigos) que ainda leia o formato velho.
  */
-export function historyEntry(date, count) {
+export function historyEntry(date, count, kind) {
   const n = Math.max(0, Number(count) || 0);
-  return { date, count: n, ads_count: n, result_date: date, results_count: n };
+  const entry = { date, count: n, ads_count: n, result_date: date, results_count: n };
+  if (kind) entry.kind = kind;
+  return entry;
 }
 
 /** Insere ou atualiza a medição de um dia dentro do histórico. */
-export function upsertHistory(history, date, count) {
+export function upsertHistory(history, date, count, kind) {
   const normalized = normalizeHistory(history).filter((h) => h.date !== date);
-  normalized.push({ date, count: Math.max(0, Number(count) || 0) });
+  normalized.push({ date, count: Math.max(0, Number(count) || 0), kind });
   return normalized
     .sort((a, b) => a.date.localeCompare(b.date))
-    .map((h) => historyEntry(h.date, h.count));
+    .map((h) => historyEntry(h.date, h.count, h.kind));
 }
 
 /**
@@ -207,6 +220,17 @@ export const STAGE_BY_ADS = [
   { days: 15, ads: 10 }, // 15+ dias e 10+ anúncios -> Escalando
   { days: 20, ads: 7 }   // 20+ dias e 7+ anúncios  -> Escalando
 ];
+
+/** Data em que o rastreio viu a oferta morrer (anunciante sem anúncios), ou null. */
+export function deadSince(offer) {
+  const value = mergeMeta(offer).dead_since;
+  return typeof value === 'string' && value ? value : null;
+}
+
+/** A oferta saiu do ar (o rastreio confirmou em duas leituras). */
+export function isOfferDead(offer) {
+  return deadSince(offer) !== null;
+}
 
 /** Total de anúncios ativos do anunciante lido na mineração, ou null. */
 export function resolvePageActiveAds(offer, meta) {
