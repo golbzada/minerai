@@ -6,9 +6,14 @@
 // vídeo pelo WebGPU). Nada vai para servidor: custo zero.
 //
 // O código do transformers.js fica em vendor/ (extensão não pode carregar
-// código de fora) e só é carregado quando o primeiro vídeo é transcrito. O
-// modelo de voz é baixado do Hugging Face na primeira vez (~80 MB) e fica no
-// cache do navegador.
+// código de fora). O modelo de voz é baixado do Hugging Face na primeira vez
+// (~80 MB) e fica no cache do navegador.
+//
+// O Whisper roda num worker à parte (transcritor-motor.js), não aqui: placa
+// de vídeo que falha ou some no meio estraga o motor inteiro (nem o
+// processador funciona mais nele) e pode deixar a transcrição pendurada. A
+// orquestra descarta o worker e refaz o vídeo num worker novo, só no
+// processador (visto em 13/10/2026).
 //
 // Fluxo sem pedido longo pendurado no service worker: MINERAI_TRANSCREVER é
 // aceito na hora e entra numa fila (um vídeo por vez: o motor não aguenta dois
@@ -18,99 +23,125 @@
 // Design: docs/superpowers/specs/2026-10-13-transcricao-do-criativo-design.md
 // ==============================================================================
 
-const MODELO = 'onnx-community/whisper-base';
-const REVISAO = '1846881b6b3a3024392c1eea3ad983695bc23925'; // versão fixa do modelo
 const AMOSTRAGEM = 16000;           // o Whisper ouve em 16 kHz
 const VIDEO_MAX_BYTES = 300 * 1024 * 1024;
 const VIDEO_TEMPO_MAX_MS = 120000;
-const OCIOSO_MS = 5 * 60 * 1000;    // sem uso: libera a memória do modelo
 const VIDEO_DA_META_RE = /^https:\/\/[a-z0-9.-]+\.(fbcdn\.net|cdninstagram\.com)\//i;
+const DEMOROU = 'O transcritor demorou demais neste vídeo. Tente de novo.';
+
+const LIMITES = {
+  // Depois que o modelo carregou e começou a ouvir: placa de vídeo é rápida
+  // (vídeo de 7 min em menos de 1 min); passou disso, ela travou.
+  vigiaMs: (gpu, duracao) => (gpu ? 60 + duracao : 120 + 4 * duracao) * 1000,
+  // Prazo do vídeo inteiro (as duas tentativas), contando o download do
+  // modelo na primeira vez. Com os até 2 min para baixar o vídeo, fica abaixo
+  // dos 15 min em que a aba desiste de esperar.
+  tetoMs: 12 * 60 * 1000,
+  ociosoMs: 5 * 60 * 1000 // sem uso: encerra o motor e devolve a memória
+};
 
 const daExtensao = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL;
-const pastaVendor = daExtensao ? chrome.runtime.getURL('vendor/') : new URL('./vendor/', import.meta.url).href;
 
-let biblioteca = null; // transformers.js, carregado só quando precisa
-let carregando = null; // Promise<{ asr, gpu }>
-let ocioso = null;
+function motorPadrao() {
+  return new Worker(new URL('./transcritor-motor.js', import.meta.url), { type: 'module' });
+}
 
-async function transformers() {
-  if (!biblioteca) {
-    biblioteca = await import('./vendor/transformers.min.js');
-    const { env } = biblioteca;
-    env.allowLocalModels = false;
-    env.useBrowserCache = true;
-    env.backends.onnx.wasm.wasmPaths = pastaVendor;
-    env.backends.onnx.wasm.numThreads = 1; // sem isolamento entre origens não há threads
+/**
+ * Quem conversa com o motor (worker) do Whisper. Placa de vídeo que dá erro,
+ * trava ou derruba o worker: o motor é descartado e o mesmo áudio é ouvido
+ * de novo num motor novo, só no processador. Se lá deu certo (ou se a placa
+ * travou até o prazo acabar), os próximos vídeos já vão direto para o
+ * processador.
+ */
+export function criarOrquestra({ criarMotor = motorPadrao, limites = LIMITES } = {}) {
+  let motor = null;
+  let semGpu = false;
+  let ocioso = null;
+
+  function encerrar() {
+    clearTimeout(ocioso);
+    if (motor) motor.terminate();
+    motor = null;
   }
-  return biblioteca;
-}
 
-/** Progresso dos vários arquivos do modelo somado num percentual só, no máximo 1 por segundo. */
-function medidorDeDownload(aoProgresso) {
-  const arquivos = new Map();
-  let ultimo = 0;
-  let maior = 0;
-  return (p) => {
-    if (!p || !p.file || !p.total) return;
-    arquivos.set(p.file, { loaded: p.loaded || 0, total: p.total });
-    const agora = Date.now();
-    if (agora - ultimo < 1000) return;
-    let feito = 0;
-    let total = 0;
-    arquivos.forEach((a) => {
-      feito += a.loaded;
-      total += a.total;
-    });
-    // Os arquivos pequenos (configuração) chegam primeiro e dariam "99%"
-    // falso: só mostra quando os grandes já entraram na conta, e nunca volta.
-    if (total < 5 * 1024 * 1024) return;
-    ultimo = agora;
-    maior = Math.max(maior, Math.min(99, Math.round((feito / total) * 100)));
-    aoProgresso?.({ etapa: 'modelo', pct: maior });
-  };
-}
-
-/** Carrega o Whisper (placa de vídeo se tiver e se não falhou antes; senão processador). */
-function transcritor(aoProgresso, { semGpu = false } = {}) {
-  if (!carregando) {
-    carregando = (async () => {
-      const { pipeline } = await transformers();
-      const opcoes = { revision: REVISAO, progress_callback: medidorDeDownload(aoProgresso) };
-      if (!semGpu && typeof navigator !== 'undefined' && navigator.gpu) {
-        try {
-          const asr = await pipeline('automatic-speech-recognition', MODELO, {
-            ...opcoes,
-            device: 'webgpu',
-            dtype: { encoder_model: 'fp32', decoder_model_merged: 'q4' }
-          });
-          return { asr, gpu: true };
-        } catch (e) {
-          console.warn('[Mineraí] Placa de vídeo indisponível para o transcritor, usando o processador:', e.message);
+  function tentar(som, opcoes, aoProgresso, soProcessador, prazoMs) {
+    if (!motor) motor = criarMotor();
+    const atual = motor;
+    return new Promise((resolve, reject) => {
+      let naPlaca = !soProcessador;
+      let vigia = null;
+      let acabou = false;
+      const terminar = (erro, saida, { refazer = true } = {}) => {
+        if (acabou) return;
+        acabou = true;
+        clearTimeout(vigia);
+        clearTimeout(teto);
+        atual.onmessage = null;
+        atual.onerror = null;
+        if (!erro) {
+          resolve(saida);
+          return;
         }
-      }
-      const asr = await pipeline('automatic-speech-recognition', MODELO, { ...opcoes, device: 'wasm', dtype: 'q8' });
-      return { asr, gpu: false };
-    })().catch((e) => {
-      carregando = null;
-      throw e;
+        // Motor que falhou não é reaproveitado: pode ter ficado estragado.
+        atual.terminate();
+        if (motor === atual) motor = null;
+        erro.naPlaca = naPlaca && refazer;
+        reject(erro);
+      };
+      // Acabou o prazo: não há tempo para outra tentativa. Se estava na placa,
+      // ela travou (ainda carregando, antes do vigia existir).
+      const teto = setTimeout(() => {
+        const erro = new Error(DEMOROU);
+        erro.placaTravou = naPlaca;
+        terminar(erro, null, { refazer: false });
+      }, prazoMs);
+      atual.onerror = (e) => terminar(new Error((e && e.message) || 'O motor do transcritor parou. Tente de novo.'));
+      atual.onmessage = (evento) => {
+        const m = evento.data || {};
+        if (m.tipo === 'progresso') aoProgresso?.(m.progresso);
+        else if (m.tipo === 'ouvindo') {
+          naPlaca = Boolean(m.gpu);
+          aoProgresso?.({ etapa: 'ouvindo' });
+          vigia = setTimeout(() => terminar(new Error(DEMOROU)), limites.vigiaMs(naPlaca, som.duracao));
+        } else if (m.tipo === 'pronto') terminar(null, m.saida);
+        else if (m.tipo === 'erro') {
+          if (typeof m.gpu === 'boolean') naPlaca = m.gpu;
+          terminar(new Error(m.mensagem || 'Falha ao transcrever. Tente de novo.'));
+        }
+      };
+      atual.postMessage({ tipo: 'ouvir', audio: som.audio, opcoes, semGpu: soProcessador });
     });
   }
-  return carregando;
+
+  async function ouvir(som, opcoes, aoProgresso) {
+    clearTimeout(ocioso);
+    // Um prazo só para o vídeo: a segunda tentativa usa o que sobrou.
+    const prazo = Date.now() + limites.tetoMs;
+    try {
+      try {
+        return await tentar(som, opcoes, aoProgresso, semGpu, limites.tetoMs);
+      } catch (e) {
+        if (e.placaTravou) semGpu = true;
+        if (!e.naPlaca) throw e;
+        const resta = prazo - Date.now();
+        if (resta <= 0) throw new Error(DEMOROU);
+        console.warn('[Mineraí] Placa de vídeo falhou no transcritor; refazendo no processador:', e.message);
+        const saida = await tentar(som, opcoes, aoProgresso, true, resta);
+        // Só fica no processador se lá deu certo: falha dos dois (a internet
+        // caiu no download do modelo, por exemplo) não é culpa da placa.
+        semGpu = true;
+        return saida;
+      }
+    } finally {
+      clearTimeout(ocioso);
+      if (motor) ocioso = setTimeout(encerrar, limites.ociosoMs);
+    }
+  }
+
+  return { ouvir, encerrar };
 }
 
-async function liberarModelo() {
-  const atual = carregando;
-  carregando = null;
-  try {
-    const { asr } = await atual;
-    await asr.dispose();
-  } catch (e) {}
-}
-
-function marcarUso() {
-  clearTimeout(ocioso);
-  ocioso = setTimeout(liberarModelo, OCIOSO_MS);
-}
+let orquestra = null; // a do documento oculto, criada no primeiro vídeo
 
 /** Áudio do vídeo em 16 kHz mono. `null` quando não dá para ouvir (sem som ou formato estranho). */
 export async function audioDoVideo(dados) {
@@ -139,20 +170,8 @@ export async function transcrever(dados, aoProgresso, extras = {}) {
   if (!som) return { duracao: 0, chunks: [], texto: '', semAudio: true };
 
   const opcoes = { return_timestamps: true, chunk_length_s: 30, stride_length_s: 5, task: 'transcribe', ...extras };
-  let { asr, gpu } = await transcritor(aoProgresso);
-  aoProgresso?.({ etapa: 'ouvindo' });
-  let saida;
-  try {
-    saida = await asr(som.audio, opcoes);
-  } catch (e) {
-    if (!gpu) throw e;
-    // A placa de vídeo falhou no meio (driver, memória): volta para o processador.
-    console.warn('[Mineraí] Placa de vídeo falhou ao transcrever, tentando no processador:', e.message);
-    await liberarModelo();
-    ({ asr } = await transcritor(aoProgresso, { semGpu: true }));
-    saida = await asr(som.audio, opcoes);
-  }
-  marcarUso();
+  if (!orquestra) orquestra = criarOrquestra();
+  const saida = await orquestra.ouvir(som, opcoes, aoProgresso);
   return {
     duracao: som.duracao,
     texto: String(saida.text || '').trim(),

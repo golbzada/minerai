@@ -37,8 +37,19 @@ No botão **Baixar mídia** da barra da extensão na Biblioteca, quando o anúnc
 - Idioma: texto do anúncio lido na Biblioteca (sem os rótulos da página) +
   país da busca para desempatar. Sem idioma o Whisper traduzia para o inglês.
 - Fluxo: o service worker não segura pedido longo; o documento oculto põe
-  os vídeos numa fila e avisa o fim por mensagem. Placa de vídeo que falha
-  no meio volta para o processador; o modelo sai da memória após 5 min parado.
+  os vídeos numa fila e avisa o fim por mensagem.
+- O Whisper roda num **worker** à parte (`transcritor-motor.js`), criado pelo
+  documento oculto. Motivo (visto em 13/10/2026, 1.30.0): placa de vídeo que
+  dá erro estraga o motor inteiro (o processador no mesmo motor também
+  falhava: "algo deu errado no transcritor") e placa que some no meio deixava
+  a transcrição pendurada para sempre, prendendo a fila. Agora: erro ou
+  travada na placa (vigia: 60 s + 1 s por segundo de vídeo) descarta o worker
+  e o mesmo áudio é ouvido num worker novo, só no processador; os vídeos
+  seguintes já vão direto para o processador. Teto de 14 min por tentativa
+  (a aba desiste aos 15). Parado 5 min, o worker é encerrado e a memória
+  volta inteira.
+- Erro desconhecido aparece com um pedaço da mensagem técnica entre
+  parênteses, para o print do cliente dizer o que aconteceu.
 - Vídeo sem fala: o `.txt` diz que não há fala para transcrever.
 - Imagem: não muda nada.
 

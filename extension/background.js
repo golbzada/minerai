@@ -809,17 +809,27 @@ const MODELAR_ESPERA_MS = 3500;
 // trocavam de nome entre si. A reserva expira em 2 minutos.
 const nomesPendentes = new Map(); // url -> { nome, ate }
 
+/** O Chrome devolve o endereço normalizado (espaço vira %20...): a chave também é. */
+function chaveDoDownload(url) {
+  try {
+    return new URL(url).href;
+  } catch (e) {
+    return String(url);
+  }
+}
+
 function reservarNome(url, nome) {
-  nomesPendentes.set(url, { nome, ate: Date.now() + 120000 });
+  nomesPendentes.set(chaveDoDownload(url), { nome, ate: Date.now() + 120000 });
 }
 
 if (chrome.downloads?.onDeterminingFilename) {
   chrome.downloads.onDeterminingFilename.addListener((item, sugerir) => {
     const agora = Date.now();
     nomesPendentes.forEach((r, url) => { if (r.ate < agora) nomesPendentes.delete(url); });
-    const reserva = nomesPendentes.get(item.url);
+    const chave = chaveDoDownload(item.url);
+    const reserva = nomesPendentes.get(chave);
     if (reserva) {
-      nomesPendentes.delete(item.url);
+      nomesPendentes.delete(chave);
       sugerir({ filename: reserva.nome, conflictAction: 'uniquify' });
       return;
     }
@@ -868,7 +878,7 @@ function baixarPacote(blobUrl, nomeArquivo) {
   return new Promise((resolve, reject) => {
     chrome.downloads.download({ url: blobUrl, filename: nomeArquivo, saveAs: false }, (id) => {
       if (chrome.runtime.lastError || id === undefined) {
-        nomesPendentes.delete(blobUrl);
+        nomesPendentes.delete(chaveDoDownload(blobUrl));
         reject(new Error(chrome.runtime.lastError?.message || 'O Chrome recusou o download.'));
         return;
       }
@@ -1082,12 +1092,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
     }
     if (chrome.downloads && chrome.downloads.download) {
+      const nome = nomeValido ? nomePedido : `anuncio_${Date.now()}.${url.includes('.mp4') ? 'mp4' : 'jpg'}`;
+      // Com o ouvinte de nomes (onDeterminingFilename) ligado, o Chrome ignora
+      // o `filename` abaixo e salvava o vídeo com o nome cru do Facebook.
+      reservarNome(url, nome);
       chrome.downloads.download({
         url,
-        filename: nomeValido ? nomePedido : `anuncio_${Date.now()}.${url.includes('.mp4') ? 'mp4' : 'jpg'}`,
+        filename: nome,
         saveAs: false
       }, (downloadId) => {
         if (chrome.runtime?.lastError) {
+          nomesPendentes.delete(chaveDoDownload(url));
           sendResponse({ success: false, error: chrome.runtime.lastError.message });
         } else {
           sendResponse({ success: true, downloadId });
