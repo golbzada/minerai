@@ -97,10 +97,22 @@
 
   syncSession();
 
+  /**
+   * Toda mensagem aceita precisa ter sido postada por esta mesma janela, nesta
+   * mesma origem. Um iframe embutido, uma aba aberta por terceiro ou um site
+   * qualquer não passam daqui. A checagem de origem fica repetida em cada
+   * ouvinte de propósito, para ser visível (e auditável) no próprio handler.
+   */
+  function mensagemDoPainel(event) {
+    if (event.origin !== window.location.origin) return false;
+    if (event.source !== window) return false;
+    return Boolean(event.data && typeof event.data === 'object');
+  }
+
   // 2. Ouvir eventos disparados pelo dashboard (mesma janela, mesma origem).
   window.addEventListener('message', (event) => {
-    if (event.source !== window || event.origin !== window.location.origin) return;
-    if (!event.data || event.data.type !== 'MINERAI_SYNC_AUTH') return;
+    if (event.origin !== window.location.origin || !mensagemDoPainel(event)) return;
+    if (event.data.type !== 'MINERAI_SYNC_AUTH') return;
     // O painel só manda o usuário; a sessão é lida do localStorage do domínio.
     lastSyncKey = '';
     syncSession();
@@ -108,37 +120,48 @@
 
   // 3. O painel não consegue baixar página de terceiro (o navegador bloqueia
   //    por segurança). Ele pede aqui, e quem executa é a extensão.
-  window.addEventListener('message', (event) => {
-    if (event.source !== window || event.origin !== window.location.origin) return;
-    const dado = event.data;
-    if (!dado || dado.type !== 'MINERAI_MODELAR') return;
+  /** Devolve ao painel o resultado da captura, sempre na origem do painel. */
+  function responderModelar(id, payload) {
+    window.postMessage(
+      { type: 'MINERAI_MODELAR_RESULTADO', id, ...payload },
+      window.location.origin
+    );
+  }
 
-    const responder = (payload) => {
-      window.postMessage({ type: 'MINERAI_MODELAR_RESULTADO', id: dado.id, ...payload }, window.location.origin);
-    };
-
+  /** Repassa o pedido ao background e traduz "extensão sumiu" para o painel. */
+  function encaminharModelar(id, url) {
     if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id) {
-      responder({ success: false, error: 'EXTENSAO_AUSENTE' });
+      responderModelar(id, { success: false, error: 'EXTENSAO_AUSENTE' });
       return;
     }
 
-    try {
-      chrome.runtime.sendMessage({ type: 'MODELAR_PAGINA', url: String(dado.url || '') }, (resposta) => {
-        if (chrome.runtime?.lastError) {
-          responder({ success: false, error: 'EXTENSAO_AUSENTE' });
-          return;
-        }
-        responder(resposta || { success: false, error: 'Sem resposta da extensão.' });
-      });
-    } catch (e) {
-      responder({ success: false, error: 'EXTENSAO_AUSENTE' });
+    function aoResponder(resposta) {
+      if (chrome.runtime?.lastError) {
+        responderModelar(id, { success: false, error: 'EXTENSAO_AUSENTE' });
+        return;
+      }
+      responderModelar(id, resposta || { success: false, error: 'Sem resposta da extensão.' });
     }
+
+    try {
+      chrome.runtime.sendMessage({ type: 'MODELAR_PAGINA', url }, aoResponder);
+    } catch (e) {
+      responderModelar(id, { success: false, error: 'EXTENSAO_AUSENTE' });
+    }
+  }
+
+  window.addEventListener('message', (event) => {
+    if (event.origin !== window.location.origin) return;
+    if (!mensagemDoPainel(event)) return;
+    const dado = event.data;
+    if (dado.type !== 'MINERAI_MODELAR') return;
+    encaminharModelar(dado.id, String(dado.url || ''));
   });
 
   // 4. Deixa o painel saber que a extensão está instalada.
   window.addEventListener('message', (event) => {
-    if (event.source !== window || event.origin !== window.location.origin) return;
-    if (!event.data || event.data.type !== 'MINERAI_PING') return;
+    if (event.origin !== window.location.origin || !mensagemDoPainel(event)) return;
+    if (event.data.type !== 'MINERAI_PING') return;
     window.postMessage(
       { type: 'MINERAI_PONG', versao: chrome?.runtime?.getManifest?.().version },
       window.location.origin

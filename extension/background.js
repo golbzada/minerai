@@ -19,6 +19,112 @@ const DASHBOARD_URLS = [
   'http://localhost:5173'
 ];
 
+// ==============================================================================
+// SANEAMENTO DO QUE SAI DO CONTENT SCRIPT
+// ==============================================================================
+// O content script lê o DOM da Biblioteca, que é controlado pelo anunciante.
+// Nada do que ele extrai é confiável: antes de virar linha no banco, cada
+// campo passa por aqui. Os limites espelham as constraints da migração 002 —
+// sem isso, um campo estourado derrubava a oferta inteira com "23514".
+
+const OFFER_LIMITS = {
+  name: 200,
+  niche: 80,
+  topic: 80,
+  pageId: 64,
+  notes: 9000,
+  url: 2048,
+  adsCount: 10000000
+};
+
+const STATUS_VALUES = ['testing', 'pre_scaling', 'scaling', 'winner', 'paused'];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DIGITS_RE = /^\d{1,64}$/;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const PAGE_SLUG_RE = /^[A-Za-z][A-Za-z0-9._-]{2,79}$/;
+
+function clip(value, max) {
+  const str = value == null ? '' : String(value);
+  return str.length > max ? str.slice(0, max) : str;
+}
+
+/** URL http(s) normalizada ou string vazia. Nunca `javascript:` nem `data:`. */
+function safeHttpUrl(value) {
+  if (value == null) return '';
+  const raw = String(value).trim();
+  if (!raw || raw.length > OFFER_LIMITS.url) return '';
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+    if (!parsed.hostname || !parsed.hostname.includes('.')) return '';
+    return parsed.href.length > OFFER_LIMITS.url ? '' : parsed.href;
+  } catch (e) {
+    return '';
+  }
+}
+
+/** Só https vale para baixar foto/criativo (nada de data:, blob:, file:...). */
+function isFetchableImageUrl(value) {
+  return /^https:\/\//i.test(String(value || '')) && String(value).length <= OFFER_LIMITS.url;
+}
+
+function safeStatus(value, fallback = 'testing') {
+  return STATUS_VALUES.includes(value) ? value : fallback;
+}
+
+function safeCount(value, fallback = 1) {
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(OFFER_LIMITS.adsCount, Math.max(0, n));
+}
+
+function safeDigits(value) {
+  const str = String(value || '').trim();
+  return DIGITS_RE.test(str) ? str : '';
+}
+
+function safeIsoDate(value) {
+  const str = String(value || '').trim();
+  return ISO_DATE_RE.test(str) ? str : '';
+}
+
+function safePageSlug(value) {
+  const str = String(value || '').trim();
+  return PAGE_SLUG_RE.test(str) ? str : '';
+}
+
+function safeUuid(value) {
+  const str = String(value || '').trim();
+  return UUID_RE.test(str) ? str : '';
+}
+
+/** Versão saneada do que o content script mandou em SAVE_OFFER. */
+function sanitizeOfferData(source) {
+  const src = source && typeof source === 'object' ? source : {};
+  return {
+    name: clip(String(src.name || '').trim(), OFFER_LIMITS.name),
+    pageName: clip(String(src.pageName || '').trim(), OFFER_LIMITS.name),
+    productName: clip(String(src.productName || '').trim(), OFFER_LIMITS.name),
+    niche: clip(String(src.niche || '').trim(), OFFER_LIMITS.niche),
+    topic: clip(String(src.topic || '').trim(), OFFER_LIMITS.topic),
+    notes: clip(String(src.notes || ''), OFFER_LIMITS.notes),
+    status: safeStatus(src.status),
+    adsCount: safeCount(src.adsCount, 1),
+    pageId: safeDigits(src.pageId),
+    pageSlug: safePageSlug(src.pageSlug),
+    libraryId: safeDigits(src.libraryId),
+    startDate: safeIsoDate(src.startDate),
+    libraryUrl: safeHttpUrl(src.libraryUrl),
+    landingPage: safeHttpUrl(src.landingPage),
+    pageUrl: safeHttpUrl(src.pageUrl),
+    adUrl: safeHttpUrl(src.adUrl),
+    pageAdsUrl: safeHttpUrl(src.pageAdsUrl),
+    avatarUrl: safeHttpUrl(src.avatarUrl),
+    avatarDomUrl: isFetchableImageUrl(src.avatarDomUrl) ? String(src.avatarDomUrl) : '',
+    creativeUrl: isFetchableImageUrl(src.creativeUrl) ? String(src.creativeUrl) : ''
+  };
+}
+
 // Obter usuário e sessão armazenados
 async function getCurrentUser() {
   return new Promise((resolve) => {
@@ -355,14 +461,18 @@ async function queryExistingOffer(userId, token, offerData, select) {
 
   const queries = [];
 
-  if (offerData.libraryId) {
+  // Os IDs já chegam saneados (só dígitos): nada deles vira operador do PostgREST.
+  const libraryId = safeDigits(offerData.libraryId);
+  const pageId = safeDigits(offerData.pageId);
+
+  if (libraryId) {
     // Chave principal: o ID DESTE anúncio, guardado no bloco de metadados.
     // Assim, minerar dois anúncios diferentes da mesma página cria duas
     // ofertas em vez de um sobrescrever o outro.
-    queries.push(`${base}&funnel_notes=like.*library_id%22:%22${encodeURIComponent(offerData.libraryId)}%22*`);
-  } else if (offerData.pageId) {
+    queries.push(`${base}&funnel_notes=like.*library_id%22:%22${encodeURIComponent(libraryId)}%22*`);
+  } else if (pageId) {
     // Sem ID do anúncio, o anunciante é o melhor critério disponível.
-    queries.push(`${base}&page_id=eq.${encodeURIComponent(offerData.pageId)}`);
+    queries.push(`${base}&page_id=eq.${encodeURIComponent(pageId)}`);
   }
 
   for (const url of queries) {
@@ -394,6 +504,8 @@ function buildMeta(offerData, existing) {
     page_id: offerData.pageId || undefined,
     page_slug: offerData.pageSlug || undefined,
     page_url: offerData.pageUrl || undefined,
+    // Nome da página do Facebook (quem anuncia), separado do nome do produto.
+    page_name: offerData.pageName || undefined,
     ad_url: offerData.adUrl || undefined,
     page_ads_url: offerData.pageAdsUrl || undefined,
     topic: offerData.topic || undefined,
@@ -433,7 +545,7 @@ async function blobToDataUri(blob) {
  * o bloqueio de CORS que o content script sofreria.
  */
 async function snapshotAvatar(url) {
-  if (!url || url.startsWith('data:')) return null;
+  if (!isFetchableImageUrl(url)) return null;
 
   try {
     const res = await fetch(url);
@@ -481,7 +593,8 @@ async function resolveAvatar(offerData) {
   const snapshot = await snapshotAvatar(offerData.avatarDomUrl);
   if (snapshot) return snapshot;
 
-  return offerData.avatarUrl || null;
+  // O banco só aceita https:// ou data:image/ aqui.
+  return isFetchableImageUrl(offerData.avatarUrl) ? offerData.avatarUrl : null;
 }
 
 /** A URL do Graph é a fonte que pode cair na silhueta padrão. */
@@ -495,7 +608,7 @@ function isGraphAvatar(url) {
  * para 320px, o que deixa cada oferta na casa das dezenas de KB.
  */
 async function snapshotCreative(url) {
-  if (!url || url.startsWith('data:')) return null;
+  if (!isFetchableImageUrl(url)) return null;
 
   try {
     const res = await fetch(url);
@@ -527,13 +640,13 @@ async function snapshotCreative(url) {
  */
 async function updateExistingOffer(existing, offerData, token) {
   const today = todayIso();
-  const adsCount = Math.max(0, parseInt(offerData.adsCount, 10) || 1);
+  const adsCount = safeCount(offerData.adsCount, 1);
   const userNotes = decodeNotes(existing.funnel_notes).notes;
 
   const patch = {
     ads_count: adsCount,
     history: upsertHistory(existing.history, today, adsCount),
-    funnel_notes: encodeNotes(userNotes, buildMeta(offerData, existing)),
+    funnel_notes: clip(encodeNotes(userNotes, buildMeta(offerData, existing)), 10000),
     updated_at: new Date().toISOString()
   };
 
@@ -550,28 +663,42 @@ async function updateExistingOffer(existing, offerData, token) {
     const creative = await snapshotCreative(offerData.creativeUrl);
     if (creative) patch.creative_thumb = creative;
   }
-  if (offerData.pageId && !existing.page_id) patch.page_id = String(offerData.pageId);
+  if (offerData.pageId && !existing.page_id) patch.page_id = clip(offerData.pageId, OFFER_LIMITS.pageId);
 
-  // Nome só é corrigido quando o que está salvo é o placeholder genérico.
-  if (offerData.name && /^oferta minerada$/i.test(existing.name || '')) {
+  // Nome só é corrigido quando o que está salvo é o placeholder genérico ou
+  // o nome da página (como era antes de separar página e produto). Se a
+  // pessoa renomeou a oferta no painel, o nome dela fica.
+  const savedName = (existing.name || '').trim();
+  if (
+    offerData.name &&
+    (/^oferta minerada$/i.test(savedName) ||
+      (offerData.productName && offerData.pageName && savedName === offerData.pageName))
+  ) {
     patch.name = offerData.name;
   }
 
   // O estágio vem do tempo de veiculação, que só cresce — então é seguro
   // reescrever. A exceção é a oferta cujo estágio o usuário fixou no painel.
   if (!decodeNotes(existing.funnel_notes).meta.status_manual) {
-    patch.status = offerData.status || 'testing';
+    patch.status = safeStatus(offerData.status);
   }
 
+  const existingId = safeUuid(existing.id);
+  if (!existingId) throw new Error('Falha ao salvar no banco de dados Mineraí.');
+
   return await writeOffer(
-    `${SUPABASE_URL}/rest/v1/offers?id=eq.${existing.id}`,
+    `${SUPABASE_URL}/rest/v1/offers?id=eq.${existingId}`,
     'PATCH',
     patch,
     token
   );
 }
 
-async function saveCapturedOffer(offerData) {
+async function saveCapturedOffer(rawOfferData) {
+  // Tudo que veio do content script passa pelo saneamento antes de qualquer
+  // uso: o DOM da Biblioteca é controlado pelo anunciante, não por nós.
+  const offerData = sanitizeOfferData(rawOfferData);
+
   // Renova o token ANTES de começar: a busca por oferta existente também
   // precisa dele, e um 401 ali passaria batido e criaria oferta duplicada.
   const { user, token } = await getAuthValida();
@@ -579,10 +706,13 @@ async function saveCapturedOffer(offerData) {
     throw new Error('Você precisa estar conectado no Mineraí para salvar ofertas.');
   }
 
-  const userId = user.id;
+  // O ID entra em URLs do PostgREST: precisa ser um UUID de verdade.
+  const userId = safeUuid(user.id);
+  if (!userId) throw new Error('Sessão inválida. Abra o painel Mineraí para reconectar.');
+
   const today = todayIso();
 
-  const adsCount = Math.max(0, parseInt(offerData.adsCount, 10) || 1);
+  const adsCount = offerData.adsCount;
   const existing = await findExistingOffer(userId, token, offerData);
 
   if (existing) {
@@ -602,13 +732,13 @@ async function saveCapturedOffer(offerData) {
     name: offerData.name || 'Oferta Minerada',
     // ID da PÁGINA do anunciante (antes era gravado o ID do anúncio aqui, o que
     // quebrava o avatar e a identificação da oferta no painel).
-    page_id: String(offerData.pageId || ''),
+    page_id: offerData.pageId,
     ads_count: adsCount,
-    library_url: offerData.libraryUrl || '',
-    landing_page: offerData.landingPage || '',
+    library_url: offerData.libraryUrl,
+    landing_page: offerData.landingPage,
     affiliate_link: '',
-    funnel_notes: encodeNotes(offerData.notes || '', meta),
-    status: offerData.status || 'testing',
+    funnel_notes: clip(encodeNotes(offerData.notes, meta), 10000),
+    status: offerData.status,
     niche: offerData.niche || 'Outros',
     avatar_url: await resolveAvatar(offerData),
     creative_thumb: await snapshotCreative(offerData.creativeUrl),
@@ -718,6 +848,30 @@ async function capturarDaPagina() {
   // 4. Clonar já com tudo revelado
   const clone = document.documentElement.cloneNode(true);
   clone.querySelectorAll('script, noscript').forEach((el) => el.remove());
+
+  // 4a. Nada que execute ou redirecione sobrevive no arquivo salvo.
+  //     O LEIA-ME promete que "nada de terceiro é executado" ao abrir o
+  //     index.html localmente. Tirar só o <script> não bastava: atributos
+  //     onclick/onload, links javascript:, <meta http-equiv="refresh">,
+  //     <base> (que reapontaria todos os links) e srcdoc também executam
+  //     ou redirecionam. A CSP adicionada pelo background é a segunda barreira.
+  clone.querySelectorAll('base, meta[http-equiv]').forEach((el) => el.remove());
+  const atributosDeUrl = ['href', 'src', 'action', 'formaction', 'xlink:href', 'data', 'poster', 'ping'];
+  for (const el of Array.from(clone.querySelectorAll('*'))) {
+    for (const attr of Array.from(el.attributes)) {
+      const nome = attr.name.toLowerCase();
+      if (nome.startsWith('on') || nome === 'srcdoc') {
+        el.removeAttribute(attr.name);
+        continue;
+      }
+      if (atributosDeUrl.includes(nome)) {
+        const valor = (attr.value || '').trim().replace(/[\u0000- ]/g, '').toLowerCase();
+        if (valor.startsWith('javascript:') || valor.startsWith('vbscript:')) {
+          el.removeAttribute(attr.name);
+        }
+      }
+    }
+  }
 
   clone.querySelectorAll('[src]').forEach((el) => {
     const v = el.getAttribute('src');
@@ -837,7 +991,7 @@ async function capturarDaPagina() {
  * rodar é que ele esconde e revela conforme a rolagem. Se falhar, a página
  * fica estática — nunca em branco.
  */
-function scriptDeAnimacao() {
+function scriptDeAnimacao(nonce) {
   return `
 <style data-minerai="animacao">
   [data-minerai-anima].minerai-oculto {
@@ -852,7 +1006,7 @@ function scriptDeAnimacao() {
     [data-minerai-anima].minerai-oculto { opacity: 1; transform: none; }
   }
 </style>
-<script data-minerai="animacao">
+<script data-minerai="animacao" nonce="${nonce}">
 (function () {
   var alvos = document.querySelectorAll('[data-minerai-anima]');
   if (!alvos.length || !('IntersectionObserver' in window)) return;
@@ -875,6 +1029,45 @@ function scriptDeAnimacao() {
   }, 6000);
 })();
 <\/script>`;
+}
+
+/**
+ * Política de segurança gravada no próprio index.html capturado: só o script
+ * de animação (identificado pelo nonce sorteado a cada captura) pode rodar.
+ * Qualquer handler inline que tenha escapado da limpeza, qualquer <script>
+ * reconstituído e qualquer envio de formulário ficam bloqueados pelo navegador.
+ */
+function cspDaCaptura(nonce) {
+  const politica = [
+    "default-src * data: blob: 'unsafe-inline'",
+    `script-src 'nonce-${nonce}'`,
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'"
+  ].join('; ');
+  return `<meta http-equiv="Content-Security-Policy" content="${politica}">`;
+}
+
+/** Nonce aleatório (base64 de 16 bytes) para a CSP da captura. */
+function gerarNonce() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  let bin = '';
+  bytes.forEach((b) => { bin += String.fromCharCode(b); });
+  return btoa(bin);
+}
+
+/**
+ * Texto que vai dentro de um <style>: um "</style" vindo do CSS do site
+ * fecharia a tag cedo e o resto viraria HTML. O `\/` é escape válido em CSS.
+ */
+function cssSeguroParaStyle(css) {
+  return String(css || '').replace(/<\/(style)/gi, '<\\/$1');
+}
+
+/** Texto que vai dentro de um comentário CSS não pode fechar o comentário. */
+function semFimDeComentario(texto) {
+  return String(texto || '').replace(/\*\//g, '* /');
 }
 
 /** Explica o que veio no pacote, para quem abrir o zip depois. */
@@ -938,14 +1131,17 @@ function nomeDoSite(url) {
 function montarDesignSystem(tokens, url) {
   const bloco = (titulo, itens, prefixo) => {
     if (!itens.length) return '';
-    const linhas = itens.map((t, i) => `  --${prefixo}-${i + 1}: ${t.valor};` +
-      ` /* usado ${t.vezes}x */`).join('\n');
+    // Os valores vêm do getComputedStyle da página capturada: não podem
+    // carregar ';' ou '}' (fechariam a declaração) nem '*/'.
+    const valorSeguro = (v) => semFimDeComentario(String(v || '').replace(/[;{}]/g, ' ')).slice(0, 300);
+    const linhas = itens.map((t, i) => `  --${prefixo}-${i + 1}: ${valorSeguro(t.valor)};` +
+      ` /* usado ${Number(t.vezes) || 0}x */`).join('\n');
     return `\n  /* ${titulo} */\n${linhas}\n`;
   };
 
   return `/* ==========================================================================
    DESIGN SYSTEM EXTRAÍDO
-   Origem: ${url}
+   Origem: ${semFimDeComentario(url)}
    Gerado pelo Mineraí em ${new Date().toLocaleString('pt-BR')}
 
    São os valores que a página realmente aplica na tela, ordenados por
@@ -1168,10 +1364,13 @@ async function modelarPagina(url, opcoes) {
       }
     }
 
-    const css = [...dados.cssInterno, ...externos].join('\n\n');
-    const html = dados.html
+    const nonce = gerarNonce();
+    const css = cssSeguroParaStyle([...dados.cssInterno, ...externos].join('\n\n'));
+    const html = String(dados.html || '')
+      // A CSP precisa ser a primeira coisa do <head> para valer para tudo que vem depois.
+      .replace(/<head([^>]*)>/i, (m) => `${m}\n${cspDaCaptura(nonce)}`)
       .replace(/<\/head>/i, `<style data-minerai="css-capturado">\n${css}\n</style>\n</head>`)
-      .replace(/<\/body>/i, `${scriptDeAnimacao()}\n</body>`);
+      .replace(/<\/body>/i, `${scriptDeAnimacao(nonce)}\n</body>`);
 
     const site = nomeDoSite(alvo.href);
     const designSystem = montarDesignSystem(dados.tokens, alvo.href);
@@ -1282,16 +1481,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'OPEN_DASHBOARD') {
-    chrome.tabs.create({ url: message.url || DASHBOARD_URLS[0] });
+    // Só abre o NOSSO painel: a URL pedida precisa estar na lista.
+    const pedida = String(message.url || '');
+    const url = DASHBOARD_URLS.find((base) => pedida === base || pedida.startsWith(`${base}/`)) || DASHBOARD_URLS[0];
+    chrome.tabs.create({ url });
     sendResponse({ success: true });
     return true;
   }
 
   if (message.type === 'DOWNLOAD_MEDIA') {
+    // Mídia só por http(s), e o nome do arquivo é o que o content script
+    // gera (letras, números, _ e .) — nada de caminho ou extensão estranha.
+    const url = String(message.url || '');
+    const nomePedido = String(message.filename || '');
+    const nomeValido = /^[A-Za-z0-9_.-]{1,120}\.(mp4|jpe?g|png|webp|gif)$/i.test(nomePedido) && !nomePedido.includes('..');
+    if (!/^https?:\/\//i.test(url) || url.length > 4096) {
+      sendResponse({ success: false, error: 'Endereço de mídia inválido.' });
+      return true;
+    }
     if (chrome.downloads && chrome.downloads.download) {
       chrome.downloads.download({
-        url: message.url,
-        filename: message.filename || `anuncio_${Date.now()}.${message.url?.includes('.mp4') ? 'mp4' : 'jpg'}`,
+        url,
+        filename: nomeValido ? nomePedido : `anuncio_${Date.now()}.${url.includes('.mp4') ? 'mp4' : 'jpg'}`,
         saveAs: false
       }, (downloadId) => {
         if (chrome.runtime?.lastError) {

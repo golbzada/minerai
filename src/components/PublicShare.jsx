@@ -87,11 +87,10 @@ export default function PublicShare({ token, onBackToApp }) {
       </nav>
 
       <section className="board">
-        {data.offers?.map((offer, idx) => (
+        {data.offers?.map((offer) => (
           <OfferCard
             key={offer.id}
             offer={offer}
-            index={idx}
             readOnly={true}
           />
         ))}

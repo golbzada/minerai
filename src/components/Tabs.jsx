@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
+import Icon from './Icons';
 
+/**
+ * Tabs do acervo (pastas por assunto). A ativa fica escura e mostra os botões
+ * de renomear e excluir; "+ Nova tab" fica discreto no fim da fileira.
+ */
 export default function Tabs({
   tabs,
   activeTabId,
@@ -40,68 +45,53 @@ export default function Tabs({
   }
 
   return (
-    <nav className="tabs">
+    <nav className="gtabs" aria-label="Tabs do acervo">
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId;
         const count = isActive ? currentOffersCount : Number(tab.offers_count) || 0;
-        const isEditing = editingTabId === tab.id;
 
-        if (isEditing) {
+        if (editingTabId === tab.id) {
           return (
-            <form
-              key={tab.id}
-              className="tab-edit-form"
-              onSubmit={(e) => handleSaveRename(tab.id, e)}
-            >
+            <form key={tab.id} className="gtab-edit" onSubmit={(e) => handleSaveRename(tab.id, e)}>
               <input
                 type="text"
                 autoFocus
                 value={editName}
+                maxLength={40}
+                aria-label="Novo nome da tab"
                 onChange={(e) => setEditName(e.target.value)}
                 onBlur={() => setEditingTabId(null)}
+                onKeyDown={(e) => e.key === 'Escape' && setEditingTabId(null)}
               />
-              <button type="submit" className="tab-edit-ok">✓</button>
             </form>
           );
         }
 
         return (
-          <div
-            key={tab.id}
-            className={`tab-wrapper ${isActive ? 'active' : ''}`}
-            onClick={() => onSelectTab(tab.id)}
-          >
-            <button className={`tab ${isActive ? 'active' : ''}`}>
-              {tab.name} <span className="count">{count}</span>
+          <div key={tab.id} className={`gtab ${isActive ? 'active' : ''}`}>
+            <button type="button" className="gtab-main" onClick={() => onSelectTab(tab.id)} aria-current={isActive ? 'true' : undefined}>
+              <span className="gtab-name">{tab.name}</span>
+              <span className="gtab-count">{count}</span>
             </button>
-
             {isActive && !locked && (
-              <div className="tab-menu-btns">
-                <button
-                  className="tab-action-btn"
-                  onClick={(e) => startRename(tab, e)}
-                  title="Renomear tab"
-                >
-                  ✎
+              <>
+                <button type="button" className="gtab-tool" onClick={(e) => startRename(tab, e)} title="Renomear tab" aria-label="Renomear tab">
+                  <Icon name="editar" size={13} strokeWidth={2} />
                 </button>
                 {tabs.length > 1 && (
-                  <button
-                    className="tab-action-btn delete"
-                    onClick={(e) => handleDelete(tab, e)}
-                    title="Excluir tab"
-                  >
-                    ×
+                  <button type="button" className="gtab-tool" onClick={(e) => handleDelete(tab, e)} title="Excluir tab" aria-label="Excluir tab">
+                    <Icon name="lixeira" size={13} strokeWidth={2} />
                   </button>
                 )}
-              </div>
+              </>
             )}
           </div>
         );
       })}
 
       {!locked && (
-        <button className="tab new-tab" onClick={onNewTab}>
-          + Nova Tab
+        <button type="button" className="gtab-new" onClick={onNewTab} title="Criar uma tab para separar ofertas por assunto">
+          <Icon name="adicionar" size={14} strokeWidth={2.4} /> Nova tab
         </button>
       )}
     </nav>

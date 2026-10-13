@@ -995,20 +995,6 @@ h1 em {
   pointer-events: none;
 }
 
-.index {
-  position: absolute;
-  z-index: 1;
-  top: 8px;
-  left: 8px;
-  padding: 3px 6px;
-  border-radius: 6px;
-  background: rgba(253, 248, 237, 0.95);
-  border: 1px solid var(--border-default);
-  font-size: 0.64rem;
-  font-weight: 900;
-  color: var(--text-primary);
-}
-
 .content {
   display: flex;
   min-width: 0;

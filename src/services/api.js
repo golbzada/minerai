@@ -439,6 +439,26 @@ export const api = {
     return { message: 'Perfil atualizado com sucesso!', user };
   },
 
+  /**
+   * Etapas do funil (Favoritos) guardadas na conta, para seguirem a pessoa em
+   * qualquer navegador. Ficam no user_metadata: só nomes, nada que libere acesso.
+   * Devolve null no modo local ou quando a conta ainda não tem a lista.
+   */
+  async loadEsteiras() {
+    if (!ONLINE()) return null;
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data?.user) return null;
+    const list = data.user.user_metadata?.minerai_esteiras;
+    return Array.isArray(list) ? list.filter((n) => typeof n === 'string' && n.trim()) : null;
+  },
+
+  async saveEsteiras(names) {
+    if (!ONLINE()) return;
+    const list = (names || []).filter((n) => typeof n === 'string' && n.trim()).slice(0, 12);
+    const { error } = await supabase.auth.updateUser({ data: { minerai_esteiras: list } });
+    if (error) throw toUserError(error, 'Não foi possível salvar as etapas na sua conta.');
+  },
+
   // ============================================================================
   // TABS (ABAS / CATEGORIAS)
   // ============================================================================
@@ -788,8 +808,9 @@ export const api = {
    * Gera o link público de uma tab tirando um retrato das ofertas do momento.
    * Só campos públicos entram no retrato (sem link de afiliado nem anotações).
    */
-  async createShareLink(tabId) {
+  async createShareLink(tabId, { days = 30 } = {}) {
     if (!tabId) throw new AppError('Selecione uma tab para compartilhar.', { code: 'VALIDATION' });
+    const validDays = [7, 30, 90].includes(Number(days)) ? Number(days) : 30;
 
     if (ONLINE()) {
       const userId = await currentUserId();
@@ -807,7 +828,8 @@ export const api = {
           share_token: randomToken(),
           tab_id: tabId,
           tab_name: clip(tab.name || 'Geral', LIMITS.tabName),
-          snapshot
+          snapshot,
+          expires_at: new Date(Date.now() + validDays * 86400000).toISOString()
         }])
         .select('share_token')
         .single();
@@ -853,6 +875,114 @@ export const api = {
 
     const share = storage.getPublicShare(cleanToken);
     return { owner_name: share.owner_name || '', tab_name: share.tab_name || 'Ofertas', offers: share.offers || [] };
+  },
+
+  // ============================================================================
+  // EXTRAS DA OFERTA (favorito, nota, etiquetas, esteira) — vivem no bloco de
+  // metadados dentro de funnel_notes; nenhuma coluna nova no banco.
+  // ============================================================================
+
+  /**
+   * Mescla `patch` no bloco de metadados da oferta. Chave com valor null é
+   * removida. `notes` (opcional) substitui o texto das anotações.
+   */
+  async patchOfferMeta(id, patch = {}, { notes } = {}) {
+    if (ONLINE()) {
+      const { data: current, error: curErr } = await supabase
+        .from('offers')
+        .select('funnel_notes')
+        .eq('id', id)
+        .maybeSingle();
+
+      assertOk(curErr, 'Erro ao carregar a oferta.');
+      if (!current) throw new AppError('Oferta não encontrada.', { code: 'NOT_FOUND' });
+
+      const decoded = decodeNotes(current.funnel_notes);
+      const nextNotes = notes !== undefined ? clip(notes, LIMITS.notes) : decoded.notes;
+      const funnel_notes = encodeNotes(nextNotes, { ...decoded.meta, ...patch });
+
+      const { data, error } = await supabase
+        .from('offers')
+        .update({ funnel_notes, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select(OFFER_COLUMNS)
+        .single();
+
+      assertOk(error, 'Erro ao salvar a oferta.');
+      return { offer: formatOffer(data) };
+    }
+
+    const current = storage.getOffers().find((o) => o.id === id);
+    if (!current) throw new AppError('Oferta não encontrada.', { code: 'NOT_FOUND' });
+    const decoded = decodeNotes(current.funnel_notes ?? current.notes);
+    const nextNotes = notes !== undefined ? notes : decoded.notes;
+    const offer = storage.updateOffer(id, {
+      funnel_notes: encodeNotes(nextNotes, { ...decoded.meta, ...patch }),
+      notes: nextNotes
+    });
+    return { offer: formatOffer(offer) };
+  },
+
+  /** Mesmo patch de metadados em várias ofertas (uma a uma, para preservar o resto). */
+  async patchOffersMeta(ids, patch) {
+    const offers = [];
+    for (const id of ids) {
+      const res = await this.patchOfferMeta(id, patch);
+      offers.push(res.offer);
+    }
+    return { offers };
+  },
+
+  /** Colunas reais em lote: tab_id e/ou status. */
+  async updateOffersBulk(ids, patch) {
+    const allowed = {};
+    if (patch.tab_id) allowed.tab_id = patch.tab_id;
+    if (patch.status) allowed.status = safeStatus(patch.status);
+    if (!ids?.length || !Object.keys(allowed).length) return { count: 0 };
+
+    if (ONLINE()) {
+      const { error } = await supabase
+        .from('offers')
+        .update({ ...allowed, updated_at: new Date().toISOString() })
+        .in('id', ids);
+      assertOk(error, 'Erro ao atualizar as ofertas.');
+      return { count: ids.length };
+    }
+
+    ids.forEach((id) => storage.updateOffer(id, allowed));
+    return { count: ids.length };
+  },
+
+  async deleteOffers(ids) {
+    if (!ids?.length) return { count: 0 };
+    if (ONLINE()) {
+      const { error } = await supabase.from('offers').delete().in('id', ids);
+      assertOk(error, 'Erro ao excluir as ofertas.');
+      return { count: ids.length };
+    }
+    ids.forEach((id) => storage.deleteOffer(id));
+    return { count: ids.length };
+  },
+
+  /** Links públicos que o usuário gerou (sem o retrato, que é pesado). */
+  async listShares() {
+    if (ONLINE()) {
+      const { data, error } = await supabase
+        .from('shares')
+        .select('id,share_token,tab_id,tab_name,created_at,expires_at')
+        .order('created_at', { ascending: false });
+      assertOk(error, 'Erro ao listar os links públicos.');
+      return { shares: data || [] };
+    }
+    return { shares: [] };
+  },
+
+  async deleteShare(id) {
+    if (ONLINE()) {
+      const { error } = await supabase.from('shares').delete().eq('id', id);
+      assertOk(error, 'Erro ao revogar o link.');
+    }
+    return { message: 'Link revogado. Quem tiver o endereço não consegue mais abrir.' };
   },
 
   // ============================================================================

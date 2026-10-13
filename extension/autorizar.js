@@ -39,6 +39,37 @@
     recado.className = 'recado aparece ' + (tipo || 'neutro');
   }
 
+  /**
+   * Versão do `mostrar` para conteúdo que carrega dados (nome do arquivo,
+   * tamanhos): monta os nós pelo DOM em vez de concatenar HTML, para nenhum
+   * valor virar marcação. `partes` é uma lista de [tag, texto] ou strings.
+   */
+  function mostrarNos(partes, tipo) {
+    recado.textContent = '';
+    partes.forEach((parte) => {
+      if (typeof parte === 'string') {
+        recado.appendChild(document.createTextNode(parte));
+        return;
+      }
+      const [tag, texto, filhos] = parte;
+      const el = document.createElement(tag);
+      if (texto != null) el.textContent = texto;
+      (filhos || []).forEach((filho) => {
+        const [ftag, ftexto, fcode] = filho;
+        const fel = document.createElement(ftag);
+        if (fcode) {
+          const code = document.createElement('code');
+          code.textContent = fcode;
+          fel.appendChild(code);
+        }
+        fel.appendChild(document.createTextNode(ftexto));
+        el.appendChild(fel);
+      });
+      recado.appendChild(el);
+    });
+    recado.className = 'recado aparece ' + (tipo || 'neutro');
+  }
+
   function ocupado(estado, texto) {
     btnLiberar.disabled = estado;
     btnTexto.textContent = texto;
@@ -115,24 +146,30 @@
       intro.textContent = 'O pacote está na sua pasta de downloads.';
       ocupado(true, '✓ Concluído');
       btnFechar.style.display = 'block';
-      mostrar(
-        `<strong>Salvo em Downloads/${d.pasta}</strong>` +
-        '<ul>' +
-        `<li><code>index.html</code> — a página, ${d.tamanhoHtmlKb} KB, com o CSS embutido</li>` +
-        `<li><code>design-system.css</code> — ${d.cores} cores, fontes e espaçamentos</li>` +
-        '<li><code>LEIA-ME.txt</code> — o que veio no pacote e como usar</li>' +
-        '</ul>',
+      mostrarNos(
+        [
+          ['strong', `Salvo em Downloads/${String(d.pasta || '')}`],
+          ['ul', null, [
+            ['li', ` — a página, ${Number(d.tamanhoHtmlKb) || 0} KB, com o CSS embutido`, 'index.html'],
+            ['li', ` — ${Number(d.cores) || 0} cores, fontes e espaçamentos`, 'design-system.css'],
+            ['li', ' — o que veio no pacote e como usar', 'LEIA-ME.txt']
+          ]]
+        ],
         'ok'
       );
       return;
     }
 
     ocupado(false, '🔄 Tentar de novo');
-    mostrar(
-      '<strong>A autorização passou, mas a captura falhou.</strong><br>' +
-      (resposta?.error || 'Não foi possível ler a página.') +
-      '<br><br>Costuma ser página que exige login ou que bloqueia leitura. ' +
-      'Tente outra URL pelo painel.',
+    mostrarNos(
+      [
+        ['strong', 'A autorização passou, mas a captura falhou.'],
+        ['br'],
+        String(resposta?.error || 'Não foi possível ler a página.'),
+        ['br'],
+        ['br'],
+        'Costuma ser página que exige login ou que bloqueia leitura. Tente outra URL pelo painel.'
+      ],
       'erro'
     );
   });

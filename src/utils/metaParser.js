@@ -49,47 +49,52 @@ export function formatCpfCnpj(value) {
 }
 
 export function getFbAvatarUrl(pageId) {
-  return `https://graph.facebook.com/${pageId || '4'}/picture?type=large`;
+  return `https://graph.facebook.com/${encodeURIComponent(String(pageId || '4'))}/picture?type=large`;
 }
 
 export const STATUS_CONFIG = {
   winner: {
     key: 'winner',
     // Laranja sólido com texto branco: é o selo de maior destaque do painel.
-    label: 'Vencedor 🔥',
+    label: 'Vencedor',
     color: '#ffffff',
     bg: '#f97316',
     border: '#ea580c'
   },
   scaling: {
     key: 'scaling',
-    label: 'Escalando 📈',
+    label: 'Escalando',
     color: '#00875a',
     bg: '#e3fcef',
     border: '#abf5d1'
   },
   pre_scaling: {
     key: 'pre_scaling',
-    label: 'Pré-escala 🌱',
+    label: 'Pré-escala',
     color: '#b45309',
     bg: '#fef3c7',
     border: '#fcd34d'
   },
   testing: {
     key: 'testing',
-    label: 'Em Teste 🧪',
+    label: 'Em teste',
     color: '#0052cc',
     bg: '#deebff',
     border: '#b3d4ff'
   },
   paused: {
     key: 'paused',
-    label: 'Pausado ⏸️',
+    label: 'Pausado',
     color: '#6554c0',
     bg: '#eae6ff',
     border: '#c0b6f2'
   }
 };
+
+/** Nome do status sem o emoji do fim ("Escalando 📈" vira "Escalando"). */
+export function statusText(cfg) {
+  return String(cfg?.label || '').replace(/[^\p{L}\p{N}\s-]/gu, '').trim();
+}
 
 export const NICHE_OPTIONS = [
   'Saúde & Beleza',
@@ -112,5 +117,5 @@ export const NICHE_OPTIONS = [
   'iGaming & Apostas',
   'Negócios Locais & Serviços',
   'Software, Apps & SaaS',
-  'Outros (Personalizado)'
+  'Outros'
 ];

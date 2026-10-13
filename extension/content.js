@@ -38,6 +38,30 @@
     'dez': 11, 'dezembro': 11
   };
 
+  // Ícones de linha, os mesmos do painel Mineraí. Substituem os emojis da
+  // barra: emoji muda de cara em cada sistema e destoa da identidade.
+  const ICON_PATHS = {
+    relogio: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
+    camadas: 'M12 4l8 4-8 4-8-4zM4 12l8 4 8-4M4 16l8 4 8-4',
+    etiqueta: 'M20 12l-8 8-9-9V4h7l10 8zM7.5 7.5h.01',
+    baixar: 'M12 4v11M7 10l5 5 5-5M5 20h14',
+    picareta: 'M3 21l8.5-8.5M14 4l6 6M14 4c-2.5-1-6 0-8 2 3-.5 5.5.5 7 2l2 2c1.5 1.5 2.5 4 2 7 2-2 3-5.5 2-8l-1-1',
+    externo: 'M14 4h6v6M20 4l-9 9M19 13v6H5V5h6',
+    link: 'M10 14a4 4 0 0 0 5.66 0l2.83-2.83a4 4 0 0 0-5.66-5.66L11.5 6.8M14 10a4 4 0 0 0-5.66 0l-2.83 2.83a4 4 0 0 0 5.66 5.66l1.33-1.3',
+    check: 'M5 12l4 4L19 6',
+    x: 'M6 6l12 12M18 6L6 18',
+    cima: 'M6 15l6-6 6 6',
+    baixo: 'M6 9l6 6 6-6',
+    menos: 'M6 12h12',
+    mais: 'M12 6v12M6 12h12',
+    filtro: 'M4 5h16l-6 7v6l-4 2v-8z'
+  };
+
+  function icon(name, size = 13) {
+    const d = ICON_PATHS[name] || ICON_PATHS.etiqueta;
+    return `<svg class="minerai-ico" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="${d}"/></svg>`;
+  }
+
   // Safe messaging wrapper against context invalidation
   function safeSendMessage(message, callback) {
     if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id) {
@@ -98,11 +122,11 @@
         <div class="minerai-header-brand">
           <div class="minerai-logo-icon">M</div>
           <div class="minerai-header-titles">
-            <span class="minerai-header-title">Filtros Mineraí</span>
-            <span class="minerai-header-sub">arraste para mover</span>
+            <span class="minerai-header-title">Minera<span class="minerai-header-i">í</span></span>
+            <span class="minerai-header-sub">Filtros · arraste para mover</span>
           </div>
         </div>
-        <button class="minerai-min-btn" id="minerai-toggle-min" title="Minimizar / Expandir">−</button>
+        <button class="minerai-min-btn" id="minerai-toggle-min" title="Minimizar">${icon('menos', 14)}</button>
       </div>
 
       <div class="minerai-panel-body">
@@ -118,13 +142,11 @@
           </div>
           <div class="minerai-term-input-wrapper">
             <input type="text" id="minerai-term-search" placeholder="Ex: flashcards, mapas, enem..." />
-            <div class="minerai-term-nav-btns" id="minerai-term-nav" style="display: none;">
-              <button type="button" id="minerai-term-prev" title="Ocorrência anterior (▲)">▲</button>
-              <button type="button" id="minerai-term-next" title="Próxima ocorrência (▼)">▼</button>
-              <button type="button" id="minerai-term-clear" title="Limpar destaque (✕)">✕</button>
+            <div class="minerai-term-nav-btns">
+              <button type="button" id="minerai-term-clear" title="Limpar destaque">${icon('x', 12)}</button>
             </div>
           </div>
-          <span class="minerai-field-helper">Digite a palavra e clique em Garimpar para destacar em ouro</span>
+          <span class="minerai-field-helper">Digite a palavra e clique em Garimpar. Depois role a página: ela aparece destacada em ouro.</span>
         </div>
 
         <div class="minerai-field-group">
@@ -140,7 +162,7 @@
         </div>
 
         <button class="minerai-btn-primary" id="minerai-apply-filters">
-          <span>Garimpar com Filtros</span>
+          ${icon('filtro', 15)}<span>Garimpar com filtros</span>
         </button>
 
         <div class="minerai-panel-footer">
@@ -196,11 +218,11 @@
     if (currentUser) {
       authBox.className = 'minerai-auth-badge online';
       const name = currentUser.name || currentUser.email?.split('@')[0] || 'Minerador';
-      authBox.innerHTML = `<span>🟢 Conectado: <strong>${escapeHtml(name)}</strong></span>`;
+      authBox.innerHTML = `<span><span class="minerai-dot on"></span>Conectado: <strong>${escapeHtml(name)}</strong></span>`;
     } else {
       authBox.className = 'minerai-auth-badge offline';
       authBox.innerHTML = `
-        <span>${aguardandoLogin ? '🟡 Aguardando login...' : '🔴 Não conectado'}</span>
+        <span><span class="minerai-dot ${aguardandoLogin ? 'wait' : 'off'}"></span>${aguardandoLogin ? 'Aguardando login...' : 'Não conectado'}</span>
         <a id="minerai-login-link" target="_blank" href="${OFFICIAL_DASHBOARD_URL}">
           ${aguardandoLogin ? 'Reabrir painel' : 'Conectar conta'}
         </a>
@@ -269,46 +291,27 @@
     const minAdsInput = panel.querySelector('#minerai-min-ads');
     const minDaysInput = panel.querySelector('#minerai-min-days');
     const termInput = panel.querySelector('#minerai-term-search');
-    const termPrevBtn = panel.querySelector('#minerai-term-prev');
-    const termNextBtn = panel.querySelector('#minerai-term-next');
     const termClearBtn = panel.querySelector('#minerai-term-clear');
 
     minBtn.addEventListener('click', () => {
-      panel.classList.toggle('minimized');
-      minBtn.textContent = panel.classList.contains('minimized') ? '+' : '−';
+      const minimized = panel.classList.toggle('minimized');
+      minBtn.innerHTML = icon(minimized ? 'mais' : 'menos', 14);
+      minBtn.title = minimized ? 'Expandir' : 'Minimizar';
     });
 
     // Pressionar Enter no campo de termo dispara o Garimpar / Navegação
     termInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        const term = termInput.value.trim();
-        if (term !== currentSearchTerm) {
-          applyBtn.click();
-        } else {
-          if (e.shiftKey) prevMatch();
-          else nextMatch();
-        }
+        applyBtn.click();
       }
-    });
-
-    termPrevBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      prevMatch();
-    });
-
-    termNextBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      nextMatch();
     });
 
     termClearBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       termInput.value = '';
       clearHighlights();
-      const navBox = document.getElementById('minerai-term-nav');
       const counterBox = document.getElementById('minerai-term-counter');
-      if (navBox) navBox.style.display = 'none';
       if (counterBox) counterBox.style.display = 'none';
       showToast('Destaque de palavra-chave removido.');
     });
@@ -326,7 +329,7 @@
 
       const term = termInput.value.trim();
       if (term.length >= 2) {
-        const matchesCount = highlightKeyword(term, true);
+        const matchesCount = highlightKeyword(term);
         if (matchesCount > 0) {
           showToast(`${matchesCount} ocorrência(s) de "${term}" destacadas em ouro!`);
         } else {
@@ -334,9 +337,7 @@
         }
       } else {
         clearHighlights();
-        const navBox = document.getElementById('minerai-term-nav');
         const counterBox = document.getElementById('minerai-term-counter');
-        if (navBox) navBox.style.display = 'none';
         if (counterBox) counterBox.style.display = 'none';
         if (count > 0) {
           showToast(`${count} criativos encontrados!`);
@@ -383,7 +384,7 @@
     scanAndEnhanceCards();
     updateVisibleCount();
     if (currentSearchTerm && currentSearchTerm.length >= 2) {
-      highlightKeyword(currentSearchTerm, false);
+      highlightKeyword(currentSearchTerm);
     }
   }
 
@@ -399,8 +400,8 @@
         return (
           target.id === 'minerai-floating-panel' ||
           target.closest?.('#minerai-floating-panel') ||
-          target.classList?.contains('minerai-card-injected-bar') ||
-          target.closest?.('.minerai-card-injected-bar') ||
+          target.classList?.contains('minerai-injected') ||
+          target.closest?.('.minerai-injected') ||
           target.classList?.contains('minerai-toast')
         );
       });
@@ -426,11 +427,48 @@
   // ============================================================================
 
   let currentSearchTerm = '';
-  let currentMatchIndex = 0;
   let highlightedMatches = [];
 
-  function escapeRegExp(string) {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Teto para o termo digitado: acima disso ninguém está procurando palavra.
+  const TERM_MAX_LENGTH = 200;
+
+  /**
+   * Divide o texto em pedaços alternando "fora do termo" e "termo", com busca
+   * literal e insensível a maiúsculas. Sem expressão regular montada a partir
+   * do que a pessoa digitou: não há padrão custoso possível (ReDoS), e a
+   * comparação não depende de estado interno como o `lastIndex` do RegExp.
+   */
+  function splitByTerm(text, term) {
+    const parts = [];
+    if (!text || !term) {
+      if (text) parts.push({ text, match: false });
+      return parts;
+    }
+
+    let haystack = text.toLowerCase();
+    let needle = term.toLowerCase();
+    // Raros caracteres mudam de tamanho ao virar minúscula; nesse caso a
+    // busca segue no texto original para os índices continuarem batendo.
+    if (haystack.length !== text.length || needle.length !== term.length) {
+      haystack = text;
+      needle = term;
+    }
+
+    let from = 0;
+    let idx = haystack.indexOf(needle, from);
+    while (idx !== -1) {
+      if (idx > from) parts.push({ text: text.slice(from, idx), match: false });
+      parts.push({ text: text.slice(idx, idx + needle.length), match: true });
+      from = idx + needle.length;
+      idx = haystack.indexOf(needle, from);
+    }
+    if (from < text.length) parts.push({ text: text.slice(from), match: false });
+    return parts;
+  }
+
+  /** Verdadeiro quando o texto contém o termo (literal, sem diferenciar caixa). */
+  function containsTerm(text, term) {
+    return splitByTerm(text, term).some((p) => p.match);
   }
 
   function clearHighlights() {
@@ -443,25 +481,19 @@
       }
     });
     highlightedMatches = [];
-    currentMatchIndex = 0;
   }
 
-  function highlightKeyword(term, scrollToFirst = false) {
-    currentSearchTerm = (term || '').trim();
-    const navBox = document.getElementById('minerai-term-nav');
+  function highlightKeyword(term) {
+    currentSearchTerm = (term || '').trim().slice(0, TERM_MAX_LENGTH);
     const counterBox = document.getElementById('minerai-term-counter');
 
     if (!currentSearchTerm || currentSearchTerm.length < 2) {
       clearHighlights();
-      if (navBox) navBox.style.display = 'none';
       if (counterBox) counterBox.style.display = 'none';
       return 0;
     }
 
     clearHighlights();
-
-    const escaped = escapeRegExp(currentSearchTerm);
-    const regex = new RegExp(`(${escaped})`, 'gi');
 
     const cards = findAdCards();
     const createdMarks = [];
@@ -478,7 +510,7 @@
             const parent = node.parentElement;
             if (!parent) return NodeFilter.FILTER_REJECT;
             if (
-              parent.closest('.minerai-card-injected-bar') ||
+              parent.closest('.minerai-injected') ||
               parent.closest('#minerai-floating-panel') ||
               parent.tagName === 'SCRIPT' ||
               parent.tagName === 'STYLE' ||
@@ -495,7 +527,7 @@
       const matchingTextNodes = [];
       let n;
       while ((n = walker.nextNode())) {
-        if (n.nodeValue && regex.test(n.nodeValue)) {
+        if (n.nodeValue && containsTerm(n.nodeValue, currentSearchTerm)) {
           matchingTextNodes.push(n);
         }
       }
@@ -504,19 +536,18 @@
         const parent = node.parentNode;
         if (!parent) return;
 
-        const val = node.nodeValue;
-        const parts = val.split(regex);
+        const parts = splitByTerm(node.nodeValue, currentSearchTerm);
         const fragment = document.createDocumentFragment();
 
         parts.forEach((part) => {
-          if (part && part.toLowerCase() === currentSearchTerm.toLowerCase()) {
+          if (part.match) {
             const mark = document.createElement('mark');
             mark.className = 'minerai-term-highlight';
-            mark.textContent = part;
+            mark.textContent = part.text;
             fragment.appendChild(mark);
             createdMarks.push(mark);
-          } else if (part) {
-            fragment.appendChild(document.createTextNode(part));
+          } else if (part.text) {
+            fragment.appendChild(document.createTextNode(part.text));
           }
         });
 
@@ -526,63 +557,75 @@
 
     highlightedMatches = createdMarks;
 
-    if (highlightedMatches.length > 0) {
-      if (navBox) navBox.style.display = 'inline-flex';
-      if (counterBox) {
-        counterBox.style.display = 'inline-block';
-        counterBox.textContent = `1 de ${highlightedMatches.length}`;
-      }
-      if (scrollToFirst) {
-        currentMatchIndex = 0;
-        focusMatch(0, true);
-      }
-    } else {
-      if (navBox) navBox.style.display = 'none';
-      if (counterBox) {
-        counterBox.style.display = 'inline-block';
-        counterBox.textContent = '0 de 0';
-      }
+    if (counterBox) {
+      counterBox.style.display = 'inline-block';
+      counterBox.textContent = highlightedMatches.length === 1 ? '1 na página' : `${highlightedMatches.length} na página`;
     }
 
     return highlightedMatches.length;
   }
 
-  function focusMatch(index, shouldScroll = true) {
-    if (!highlightedMatches.length) return;
-    currentMatchIndex = (index + highlightedMatches.length) % highlightedMatches.length;
-
-    highlightedMatches.forEach((m, idx) => {
-      if (idx === currentMatchIndex) {
-        m.classList.add('minerai-term-active');
-      } else {
-        m.classList.remove('minerai-term-active');
-      }
-    });
-
-    const currentEl = highlightedMatches[currentMatchIndex];
-    if (currentEl && shouldScroll) {
-      currentEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-
-    const counterBox = document.getElementById('minerai-term-counter');
-    if (counterBox) {
-      counterBox.textContent = `${currentMatchIndex + 1} de ${highlightedMatches.length}`;
-    }
-  }
-
-  function nextMatch() {
-    if (!highlightedMatches.length) return;
-    focusMatch(currentMatchIndex + 1, true);
-  }
-
-  function prevMatch() {
-    if (!highlightedMatches.length) return;
-    focusMatch(currentMatchIndex - 1, true);
-  }
-
   // ============================================================================
   // 3. IDENTIFICAÇÃO PRECISA DOS CARDS DE ANÚNCIO (INDIVIDUAL AD CONTAINER)
   // ============================================================================
+
+  // Textos que só existem FORA de um card (cabeçalho de resultados, filtros).
+  // Quando a página tem um único anúncio, nenhum container tem "mais de um
+  // ID" para interromper a subida — e a barra acabava no topo da página,
+  // acima da busca. Estes marcadores param a subida no lugar certo.
+  const PAGE_CHROME_TEXT = /^~?\s*\d[\d.,]*\s+(results?|resultados?)\b|^(filters?|filtros?)(\s*\(\d+\))?$|^(sort by|classificar por)$|^(link para o an(ú|u)ncio|link to ad)$/im;
+  // Pop-ups da Biblioteca: "Link para o anúncio" e "Ver detalhes do anúncio".
+  // Dentro deles o anúncio aparece repetido (cabeçalho e corpo separados) e a
+  // barra ficava solta no topo — então pop-up não recebe barra nenhuma.
+  const DIALOG_SELECTOR = '[role="dialog"], [aria-modal="true"]';
+  const PAGE_CHROME_SELECTOR = 'input, textarea, select, form, [role="search"], [role="navigation"], [role="banner"], #minerai-floating-panel';
+  const CARD_ID_TEXT = /Identifica(?:ç|c)(?:ã|a)o da biblioteca:|Library ID:|ID da biblioteca:|Identifica(?:ç|c)(?:ã|a)o do an(?:ú|u)ncio:|Veicula(?:ç|c)(?:ã|a)o iniciada em|Come(?:ç|c)ou a ser veiculado em|Started running on/;
+  const CARD_DETAIL_TEXT = /Ver detalhes|Ver resumo|See ad details|See summary details|Plataformas|Platforms/;
+  const CARD_ID_COUNT = /(?:Identificação da biblioteca|Library ID|ID da biblioteca|Identificação do anúncio):/gi;
+
+  /**
+   * Sobe a partir do texto "Identificação da biblioteca" até o card inteiro.
+   * Para de subir ao encontrar (a) outro anúncio no mesmo container, (b) o
+   * cabeçalho de resultados/filtros ou (c) qualquer campo de formulário —
+   * coisas que um card nunca tem. Entre os invólucros com o mesmo conteúdo,
+   * fica com o mais estreito: é o card, não a linha da grade.
+   */
+  function resolveCardFromText(textNode) {
+    let current = textNode.parentElement;
+    const matches = [];
+
+    while (current && current !== document.body) {
+      if (current.getAttribute('data-minerai-card') === 'true') return current;
+      if (current.matches(DIALOG_SELECTOR)) break;
+      if (current.querySelector(PAGE_CHROME_SELECTOR)) break;
+
+      const text = current.innerText || '';
+      if (PAGE_CHROME_TEXT.test(text)) break;
+
+      const idMatches = text.match(CARD_ID_COUNT);
+      if (idMatches && idMatches.length > 1) break;
+
+      if (
+        current.tagName === 'DIV' &&
+        CARD_ID_TEXT.test(text) &&
+        (CARD_DETAIL_TEXT.test(text) || current.querySelector('img, video, a[role="link"]'))
+      ) {
+        matches.push({ el: current, len: text.length });
+      }
+
+      current = current.parentElement;
+    }
+
+    if (!matches.length) return null;
+
+    const fullLen = matches[matches.length - 1].len;
+    const full = matches
+      .filter((m) => m.len === fullLen)
+      .map((m) => ({ el: m.el, width: m.el.getBoundingClientRect().width }));
+    const minWidth = Math.min(...full.map((m) => m.width));
+    const tight = full.filter((m) => m.width === minWidth);
+    return tight[tight.length - 1].el;
+  }
 
   function findAdCards() {
     // 1. Recupera todos os cards previamente marcados
@@ -591,60 +634,20 @@
     const allCards = [...knownCards];
 
     // 2. Busca novos cards no DOM
-    const walker = document.createTreeWalker(
-      document.body,
-      NodeFilter.SHOW_TEXT,
-      null,
-      false
-    );
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
 
     let node;
     while ((node = walker.nextNode())) {
       const text = node.nodeValue;
-      if (
-        text &&
-        (text.includes('Identificação da biblioteca:') ||
-         text.includes('Library ID:') ||
-         text.includes('ID da biblioteca:') ||
-         text.includes('Identificação do anúncio:') ||
-         text.includes('Veiculação iniciada em') ||
-         text.includes('Veiculacao iniciada em') ||
-         text.includes('Começou a ser veiculado em') ||
-         text.includes('Comecou a ser veiculado em') ||
-         text.includes('Started running on'))
-      ) {
-        let current = node.parentElement;
-        let candidate = null;
+      if (!text || !CARD_ID_TEXT.test(text)) continue;
+      const parent = node.parentElement;
+      if (!parent || parent.closest('.minerai-injected') || parent.closest(DIALOG_SELECTOR)) continue;
 
-        while (current && current !== document.body) {
-          if (current.getAttribute('data-minerai-card') === 'true') {
-            candidate = current;
-            break;
-          }
-
-          const currentText = current.innerText || '';
-          // Se o container contiver mais de 1 anúncio, ele é um grid/feed pai! Paramos no candidato anterior.
-          const idMatches = currentText.match(/(?:Identificação da biblioteca|Library ID|ID da biblioteca|Identificação do anúncio):/gi);
-          if (idMatches && idMatches.length > 1) {
-            break;
-          }
-
-          if (
-            current.tagName === 'DIV' &&
-            (currentText.includes('Identificação da biblioteca:') || currentText.includes('Library ID:') || currentText.includes('ID da biblioteca:') || currentText.includes('Veiculação iniciada em') || currentText.includes('Veiculacao iniciada em')) &&
-            (currentText.includes('Ver detalhes') || currentText.includes('Ver resumo') || currentText.includes('See ad details') || currentText.includes('Plataformas') || currentText.includes('Platforms') || current.querySelector('img, video, a[role="link"]'))
-          ) {
-            candidate = current;
-          }
-
-          current = current.parentElement;
-        }
-
-        if (candidate && !cardSet.has(candidate)) {
-          candidate.setAttribute('data-minerai-card', 'true');
-          cardSet.add(candidate);
-          allCards.push(candidate);
-        }
+      const candidate = resolveCardFromText(node);
+      if (candidate && !cardSet.has(candidate)) {
+        candidate.setAttribute('data-minerai-card', 'true');
+        cardSet.add(candidate);
+        allCards.push(candidate);
       }
     }
 
@@ -758,7 +761,12 @@
     ['Criptomoedas', /\bcriptomoedas?\b|\bbitcoin\b|\bcripto\b/, 'Finanças & Investimentos'],
     ['Limpar o Nome', /\bnome limpo\b|\blimpar o nome\b|\bserasa\b|\bscore do serasa\b/, 'Finanças & Investimentos'],
     ['Emagrecimento', /\bemagrec\w*\b|\bperder peso\b|\bsecar a barriga\b/, 'Emagrecimento & Suplementos'],
-    ['Reconquista', /\breconquist\w*\b|\bex de volta\b/, 'Relacionamento & Conquista']
+    ['Reconquista', /\breconquist\w*\b|\bex de volta\b/, 'Relacionamento & Conquista'],
+
+    // Aplicativos: o destino é uma loja de apps ou o botão manda instalar.
+    ['Aplicativo', /\bplay\.google\.com\b|\bapps\.apple\.com\b|\bgoogle play\b|\bapp store\b|\binstall now\b|\binstalar agora\b|\bbaixe o app\b|\bapp gratis\b|\bbaixar o app\b/, 'Software, Apps & SaaS'],
+    // Livros impressos (produto físico, não e-book).
+    ['Livros', /\bbox de livros\b|\blivros? fisicos?\b|\bcapa dura\b|\beditora\b|\blombadas?\b|\bexemplar(es)?\b|\bharpercollins\b/, 'Dropshipping & Físicos']
   ];
 
   /**
@@ -794,109 +802,110 @@
   const NICHE_RULES = [
     {
       niche: 'Saúde & Beleza',
-      strong: /\b(fisioterap\w*|quiropraxia|acupuntura|ortopedi\w*|cardiolog\w*|dermatolog\w*|dentist\w*|odontolog\w*|clareador\w*|celulite|varizes|psoriase|dermatite|rugas|botox|melasma|manchas? na pele|queda de cabelo|calvicie|alopecia|micose|halitose|enxaqueca|labirintite|diabet\w*|pressao alta|colesterol|artrose|artrite|hernia de disco|nervo ciatico|dor(es)? (na|nas|no|nos) (coluna|joelho|costas|lombar|articulacoes))\b/,
-      weak: /\b(saude|beleza|pele|cabelo|estetica|creme|serum|dente|dentes|clinica|tratamento|sintomas?|remedio|dor|inflamacao|postura)\b/
+      strong: /\b(fisioterap\w*|quiropraxia|acupuntura|ortopedi\w*|cardiolog\w*|dermatolog\w*|dentist\w*|odontolog\w*|clareador\w*|celulite|varizes|psoriase|dermatite|rugas|botox|melasma|manchas? na pele|queda de cabelo|calvicie|alopecia|micose|halitose|enxaqueca|labirintite|diabet\w*|pressao alta|colesterol|artrose|artrite|hernia de disco|nervo ciatico|dor(es)? (na|nas|no|nos) (coluna|joelho|costas|lombar|articulacoes))\bb/g,
+      weak: /\b(saude|beleza|pele|cabelo|estetica|creme|serum|dente|dentes|clinica|tratamento|sintomas?|remedio|dor|inflamacao|postura)\bb/g
     },
     {
       niche: 'Emagrecimento & Suplementos',
-      strong: /\b(emagrec\w*|perder peso|queima(r)? de gordura|gordura localizada|obesidad\w*|suplement\w*|whey|creatina|colageno|low carb|jejum intermitente|termogenico|secar a barriga|cha emagrecedor)\b/,
-      weak: /\b(magr[ao]|barriga|dieta|calorias|metabolismo|balanca|quilos?|kg)\b/
+      strong: /\b(emagrec\w*|perder peso|queima(r)? de gordura|gordura localizada|obesidad\w*|suplement\w*|whey|creatina|colageno|low carb|jejum intermitente|termogenico|secar a barriga|cha emagrecedor)\bb/g,
+      weak: /\b(magr[ao]|barriga|dieta|calorias|metabolismo|balanca|quilos?|kg)\bb/g
     },
     {
       niche: 'Fitness & Musculação',
-      strong: /\b(musculacao|hipertrofia|gluteos?|bumbum|personal trainer|crossfit|academia|treino em casa)\b/,
-      weak: /\b(treino|fitness|shape|exercicios?|alongamento|abdomen)\b/
+      strong: /\b(musculacao|hipertrofia|gluteos?|bumbum|personal trainer|crossfit|academia|treino em casa)\bb/g,
+      weak: /\b(treino|fitness|shape|exercicios?|alongamento|abdomen)\bb/g
     },
     {
       niche: 'Finanças & Investimentos',
-      strong: /\b(investimentos?|investir|bolsa de valores|day trade|renda fixa|renda variavel|acoes|tesouro direto|criptomoedas?|bitcoin|cripto|dividendos|juros compostos|nome limpo|limpar o nome|serasa|emprestimo|financiamento|consorcio|imposto de renda|previdencia)\b/,
-      weak: /\b(financas|dolar|lucro|banco|dividas?|score|cartao de credito|renda)\b/
+      strong: /\b(investimentos?|investir|bolsa de valores|day trade|renda fixa|renda variavel|acoes|tesouro direto|criptomoedas?|bitcoin|cripto|dividendos|juros compostos|nome limpo|limpar o nome|serasa|emprestimo|financiamento|consorcio|imposto de renda|previdencia)\bb/g,
+      weak: /\b(financas|dolar|lucro|banco|dividas?|score|cartao de credito|renda)\bb/g
     },
     {
       niche: 'Renda Extra & Afiliados',
-      strong: /\b(renda extra|ganhar dinheiro|trabalh(e|ar) em casa|afiliados?|marketing digital|dinheiro online|home office|primeira venda)\b/,
-      weak: /\b(lucrar|faturamento|comissao|freelancer)\b/
+      strong: /\b(renda extra|ganhar dinheiro|trabalh(e|ar) em casa|afiliados?|marketing digital|dinheiro online|home office|primeira venda)\bb/g,
+      weak: /\b(lucrar|faturamento|comissao|freelancer)\bb/g
     },
     {
       niche: 'Relacionamento & Conquista',
-      strong: /\b(reconquist\w*|ex de volta|seducao|conquistar (mulheres|homens)|salvar (o|meu) casamento|traicao|termino)\b/,
-      weak: /\b(relacionamento|namoro|casamento|amor|paquera|ciumes)\b/
+      strong: /\b(reconquist\w*|ex de volta|seducao|conquistar (mulheres|homens)|salvar (o|meu) casamento|traicao|termino)\bb/g,
+      weak: /\b(relacionamento|namoro|casamento|amor|paquera|ciumes)\bb/g
     },
     {
       niche: 'Espiritualidade & Astrologia',
-      strong: /\b(taro|tarot|astrolog\w*|horoscopo|mapa astral|buzios|umbanda|reiki|oracao|biblia|evangelic\w*|catolic\w*|baralho cigano|numerologia|salmo\w*|terco)\b/,
-      weak: /\b(espiritual|destino|energia|universo|\bfe\b|signo|alma)\b/
+      strong: /\b(taro|tarot|astrolog\w*|horoscopo|mapa astral|buzios|umbanda|reiki|oracao|biblia|evangelic\w*|catolic\w*|baralho cigano|numerologia|salmo\w*|terco)\bb/g,
+      weak: /\b(espiritual|destino|energia|universo|\bfe\b|signo|alma)\bb/g
     },
     {
       niche: 'Educação & Idiomas',
-      strong: /\b(enem|vestibular|concurso publico|apostila|flashcards?|mapas? mentais?|redacao nota 1000|ingles|espanhol|alfabetizacao|aula particular|faculdade|\btcc\b|\boab\b)\b/,
-      weak: /\b(curso|aula|aulas|professor|estudo|estudar|aprender|idioma|resumo|escola|prova)\b/
+      strong: /\b(enem|vestibular|concurso publico|apostila|flashcards?|mapas? mentais?|redacao nota 1000|ingles|espanhol|alfabetizacao|aula particular|faculdade|\btcc\b|\boab\b)\bb/g,
+      weak: /\b(curso|aula|aulas|professor|estudo|estudar|aprender|idioma|resumo|escola|prova)\bb/g
     },
     {
       niche: 'Maternidade, Bebês & Kids',
-      strong: /\b(bebes?|gravidez|gestante|maternidade|amamenta\w*|fraldas?|enxoval|parto|berco|papinha)\b/,
-      weak: /\b(criancas?|infantil|filhos?|mae|maes)\b/
+      strong: /\b(bebes?|gravidez|gestante|maternidade|amamenta\w*|fraldas?|enxoval|parto|berco|papinha)\bb/g,
+      weak: /\b(criancas?|infantil|filhos?|mae|maes)\bb/g
     },
     {
       niche: 'Pets & Animais de Estimação',
-      strong: /\b(cachorr\w*|caes|gatos?|felin\w*|adestrament\w*|veterinari\w*|racao|pet ?shop|coleira|filhotes?)\b/,
-      weak: /\b(pet|pets|animal|animais)\b/
+      strong: /\b(cachorr\w*|caes|gatos?|felin\w*|adestrament\w*|veterinari\w*|racao|pet ?shop|coleira|filhotes?)\bb/g,
+      weak: /\b(pet|pets|animal|animais)\bb/g
     },
     {
       niche: 'Moda, Vestuário & Calçados',
-      strong: /\b(vestidos?|blusas?|calca jeans|tenis|sapatos?|sutia|lingerie|bolsa feminina|oculos de sol|semijoias?|biquini|moda (feminina|masculina))\b/,
-      weak: /\b(moda|roupas?|look|estilo|relogio)\b/
+      strong: /\b(vestidos?|blusas?|calca jeans|tenis|sapatos?|sutia|lingerie|bolsa feminina|oculos de sol|semijoias?|biquini|moda (feminina|masculina))\bb/g,
+      weak: /\b(moda|roupas?|look|estilo|relogio)\bb/g
     },
     {
       niche: 'Tecnologia & Gadgets',
-      strong: /\b(smartwatch|fone bluetooth|caixa de som|drone|notebook|tablet|projetor|aspirador robo|gadgets?|carregador)\b/,
-      weak: /\b(tecnologia|eletronico|celular|camera|\busb\b)\b/
+      strong: /\b(smartwatch|fone bluetooth|caixa de som|drone|notebook|tablet|projetor|aspirador robo|gadgets?|carregador)\bb/g,
+      weak: /\b(tecnologia|eletronico|celular|camera|\busb\b)\bb/g
     },
     {
       niche: 'Casa, Decoração & Cozinha',
-      strong: /\b(decoracao|panelas?|air ?fryer|organizador|colchao|utensilios?|cortinas?|tapetes?|luminaria|churrasqueira|liquidificador)\b/,
-      weak: /\b(cozinha|casa|limpeza|sofa|jardim|quarto)\b/
+      strong: /\b(decoracao|panelas?|air ?fryer|organizador|colchao|utensilios?|cortinas?|tapetes?|luminaria|churrasqueira|liquidificador)\bb/g,
+      weak: /\b(cozinha|casa|limpeza|sofa|jardim|quarto)\bb/g
     },
     {
       niche: 'Automotivo & Veículos',
-      strong: /\b(automovel|pneus?|veiculos?|\bcnh\b|mecanic\w*|oficina|seguro auto|caminhao|oleo do motor|bateria automotiva)\b/,
-      weak: /\b(carro|moto|dirigir|transito|motorista)\b/
+      strong: /\b(automovel|pneus?|veiculos?|\bcnh\b|mecanic\w*|oficina|seguro auto|caminhao|oleo do motor|bateria automotiva)\bb/g,
+      weak: /\b(carro|moto|dirigir|transito|motorista)\bb/g
     },
     {
       niche: 'iGaming & Apostas',
-      strong: /\b(apostas?|cassino|casino|tigrinho|fortune tiger|slots?|jogo do bicho|banca de apostas|\bbet\b|\bodds\b)\b/,
-      weak: /\b(palpite|bilhete|roleta|ganhos)\b/
+      strong: /\b(apostas?|cassino|casino|tigrinho|fortune tiger|slots?|jogo do bicho|banca de apostas|\bbet\b|\bodds\b)\bb/g,
+      weak: /\b(palpite|bilhete|roleta|ganhos)\bb/g
     },
     {
       niche: 'Software, Apps & SaaS',
-      strong: /\b(software|saas|\bcrm\b|\berp\b|sistema de gestao|automacao|chatbot|dashboard|integracao|\bapi\b)\b/,
-      weak: /\b(aplicativo|\bapp\b|sistema|plataforma|planilha)\b/
+      strong: /\b(software|saas|\bcrm\b|\berp\b|sistema de gestao|automacao|chatbot|dashboard|integracao|\bapi\b)\bb/g,
+      weak: /\b(aplicativo|\bapp\b|sistema|plataforma|planilha)\bb/g
     },
     {
       niche: 'Desenvolvimento Pessoal',
-      strong: /\b(desenvolvimento pessoal|autoestima|ansiedade|depressao|autoconhecimento|procrastinacao|inteligencia emocional)\b/,
-      weak: /\b(produtividade|mentalidade|foco|habitos?|disciplina|proposito|terapia|coach)\b/
+      strong: /\b(desenvolvimento pessoal|autoestima|ansiedade|depressao|autoconhecimento|procrastinacao|inteligencia emocional)\bb/g,
+      weak: /\b(produtividade|mentalidade|foco|habitos?|disciplina|proposito|terapia|coach)\bb/g
     },
     {
       niche: 'Infoprodutos & PLR',
-      strong: /\b(e-?books?|infoprodutos?|\bplr\b|mentoria|masterclass|treinamento online|area de membros|curso online|hotmart|kiwify|eduzz|monetizze|braip)\b/,
-      weak: /\b(modulos?|certificado|bonus|acesso vitalicio|aulas gravadas)\b/
+      strong: /\b(e-?books?|infoprodutos?|\bplr\b|mentoria|masterclass|treinamento online|area de membros|curso online|hotmart|kiwify|eduzz|monetizze|braip)\bb/g,
+      weak: /\b(modulos?|certificado|bonus|acesso vitalicio|aulas gravadas)\bb/g
     },
     {
       niche: 'Negócios Locais & Serviços',
-      strong: /\b(orcamento (gratis|sem compromisso)|agende (sua|seu)|marcar horario|agendamento|nossa loja|atendemos|funcionamos)\b/,
-      weak: /\b(whatsapp|atendimento|contato|endereco|delivery)\b/
+      strong: /\b(orcamento (gratis|sem compromisso)|agende (sua|seu)|marcar horario|agendamento|nossa loja|atendemos|funcionamos)\bb/g,
+      weak: /\b(whatsapp|atendimento|contato|endereco|delivery)\bb/g
     },
     {
       niche: 'Dropshipping & Físicos',
-      strong: /\b(frete gratis|ultimas unidades|pague na entrega|estoque limitado|compre 1 leve 2|entrega rapida|12x sem juros)\b/,
-      weak: /\b(compre agora|promocao|desconto|oferta|unidades)\b/
+      strong: /\b(frete gratis|ultimas unidades|pague na entrega|estoque limitado|compre 1 leve 2|entrega rapida|12x sem juros)\bb/g,
+      weak: /\b(compre agora|promocao|desconto|oferta|unidades)\bb/g
     }
   ];
 
+  // As regex de NICHE_RULES já nascem com a flag `g`: `String.prototype.match`
+  // devolve todas as ocorrências e não guarda estado entre chamadas.
   function countMatches(regex, text) {
-    const global = new RegExp(regex.source, regex.flags.includes('g') ? regex.flags : `${regex.flags}g`);
-    const found = text.match(global);
+    const found = text.match(regex);
     return found ? new Set(found).size : 0;
   }
 
@@ -905,8 +914,16 @@
    * letras, também o tema específico.
    * Devolve `{ niche, topic }` — `topic` fica vazio se nada específico casar.
    */
-  function classifyOffer(text) {
-    const sample = normalizeForMatch(text).slice(0, 4000);
+  function classifyOffer(text, landingPage = '') {
+    // O domínio da página de vendas entra na análise: play.google.com diz
+    // "aplicativo" mesmo quando o texto do anúncio não diz.
+    let host = '';
+    try {
+      if (landingPage) host = new URL(landingPage).hostname;
+    } catch (e) {
+      host = '';
+    }
+    const sample = normalizeForMatch(`${text}\n${host}`).slice(0, 4000);
     const detected = detectTopic(sample);
 
     let best = null;
@@ -938,6 +955,194 @@
   }
 
   // ============================================================================
+  // NOME DO PRODUTO (SEPARADO DO NOME DA PÁGINA)
+  // ============================================================================
+  // O nome da página do Facebook é quem anuncia ("Fernanda Rocha"); o produto
+  // é o que se vende ("Receitas Italianas"). O texto do anúncio não marca o
+  // nome do produto de forma confiável (já foi testado e reprovado), mas o
+  // endereço da página de vendas quase sempre carrega: 120receitasitalianas
+  // .netlify.app, metodo-ingles-fluente.com.br, apps.apple.com/br/app/meshot.
+  // Sai um palpite curto; a pessoa corrige no painel quando errar.
+
+  // Hospedagens onde o produto está no SUBDOMÍNIO (nome.netlify.app).
+  const SUBDOMAIN_HOSTS = /(^|\.)(netlify\.app|vercel\.app|github\.io|pages\.dev|web\.app|firebaseapp\.com|herokuapp\.com|onrender\.com|wixsite\.com|webflow\.io|carrd\.co|myshopify\.com|blogspot\.com|wordpress\.com|squarespace\.com|godaddysites\.com|weebly\.com|site\.com\.br|lojaintegrada\.com\.br|nuvemshop\.com\.br|mercadoshops\.com\.br|hotmart\.host|kpages\.online|kiwify\.app|lpages\.co|leadpages\.co|systeme\.io|greatpages\.com\.br|klickpages\.com\.br|builderall\.net)$/i;
+
+  // Destinos que não dizem nada sobre o produto (checkout, link curto, chat).
+  const NO_PRODUCT_HOSTS = /(^|\.)(hotmart\.com|kiwify\.com\.br|kiwify\.com|eduzz\.com|monetizze\.com\.br|braip\.com|perfectpay\.com\.br|ticto\.com\.br|pay\.hotmart\.com|wa\.me|whatsapp\.com|api\.whatsapp\.com|bit\.ly|linktr\.ee|linkbio\.co|beacons\.ai|t\.me|telegram\.me|youtube\.com|youtu\.be|google\.com|forms\.gle|typeform\.com|mercadolivre\.com\.br|shopee\.com\.br|amazon\.com\.br|magazineluiza\.com\.br|tiktok\.com)$/i;
+
+  // Pedaços de endereço que nunca são o produto.
+  const URL_NOISE = new Set([
+    'www', 'lp', 'lp2', 'vsl', 'pv', 'site', 'pagina', 'page', 'home', 'index', 'html', 'php', 'oferta', 'ofertas',
+    'checkout', 'obrigado', 'go', 'link', 'app', 'apps', 'br', 'pt', 'en', 'es', 'store', 'loja', 'oficial', 'official',
+    'online', 'digital', 'promo', 'promocao', 'desconto', 'compra', 'comprar', 'pay', 'pagamento', 'v1', 'v2', 'v3', 'p', 'c', 'ref',
+    'assinatura', 'assine', 'cadastro', 'inscricao', 'matricula', 'seguro', 'secure', 'acesso', 'membros', 'produto', 'produtos', 'vendas', 'utm',
+    'products', 'product', 'shop', 'collections', 'collection', 'categoria', 'categorias', 'category', 'item', 'items', 'pages', 'join', 'materiais'
+  ]);
+
+  // Palavras ligadas que não começam nem terminam um nome.
+  const NAME_STOPWORDS = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 'para', 'pra', 'com', 'sem', 'em', 'no', 'na', 'seu', 'sua', 'meu', 'minha', 'the', 'of', 'and', 'my', 'your']);
+
+  // Dicionário para separar endereços colados ("receitasitalianas").
+  // Não precisa conter tudo: o que não for reconhecido fica como está.
+  const URL_WORDS = new Set((
+    'receita receitas italiana italianas italiano italianos cozinha culinaria doce doces bolo bolos confeitaria brigadeiro ' +
+    'pao paes massa massas pizza pizzas salgado salgados marmita marmitas fit low carb zero acucar gluten lactose vegano vegana ' +
+    'jejum dieta dietas emagrecer emagrecimento seca secar barriga gordura queima detox cha chas suplemento natural naturais ' +
+    'metodo metodos curso cursos aula aulas treino treinos treinamento mentoria formacao escola academia ' +
+    'mapa mapas mental mentais resumo resumos questoes questao apostila apostilas flashcard flashcards caderno ' +
+    'enem concurso concursos vestibular oab lei leis seca direito medicina enfermagem pedagogia ' +
+    'ingles espanhol frances italiano idioma idiomas fluente fluencia conversacao ' +
+    'livro livros ebook ebooks guia guias manual manuais kit kits box planilha planilhas modelo modelos template templates ' +
+    'pack packs combo pacote colecao biblioteca ' +
+    'desafio dias semanas mes meses segredo segredos protocolo formula sistema codigo plano projeto programa ' +
+    'saude corpo mente vida bem estar beleza pele cabelo cabelos unha unhas cilios sobrancelha sobrancelhas maquiagem ' +
+    'croche trico costura bordado artesanato pintura desenho desenhar ilustracao lettering caligrafia ' +
+    'musica violao guitarra piano teclado canto ' +
+    'renda extra dinheiro ganhar vender vendas negocio negocios marketing afiliado afiliados trafego ' +
+    'fe oracao oracoes biblia salmo salmos tarot taro signo signos ' +
+    'cachorro cachorros gato gatos pet pets adestramento ' +
+    'bebe bebes mae maes maternidade gestante filhos crianca criancas infantil kids ' +
+    'casa jardim horta plantas decoracao organizacao limpeza ' +
+    'carro carros moto motos mecanica cnh ' +
+    'clima radar camera gps foto fotos video videos editor edicao ' +
+    'super mega max pro master premium plus top elite gold vip club clube ' +
+    'minha meu seu sua nossa nosso facil rapido rapida simples pratico pratica completo completa total novo nova'
+  ).split(/\s+/));
+
+  // Para separar palavras coladas também valem as palavras de ruído e as de
+  // ligação em português ("minhaloja" = "minha" + "loja").
+  const GLUE_WORDS = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 'para', 'pra', 'com', 'sem', 'em', 'no', 'na', 'seu', 'sua', 'meu', 'minha']);
+  const isKnownWord = (w) => URL_WORDS.has(w) || URL_NOISE.has(w) || GLUE_WORDS.has(w);
+
+  // Subdomínios que são infraestrutura, não produto (seguro.loja.com).
+  const GENERIC_SUBDOMAINS = new Set(['www', 'm', 'app', 'pay', 'pagamento', 'seguro', 'checkout', 'go', 'lp', 'pages', 'page', 'site', 'loja', 'store', 'shop', 'br', 'link', 'links', 'vendas', 'oferta', 'promo', 'secure', 'members', 'membros', 'area', 'acesso', 'blog', 'info', 'sales', 'ir', 'click', 'join', 'materiais', 'conteudo', 'conteudos']);
+
+  /** Separa "receitasitalianas" em ["receitas", "italianas"] quando der. */
+  function splitGlued(chunk) {
+    const n = chunk.length;
+    if (n <= 4 || isKnownWord(chunk)) return [chunk];
+    // best[i] = melhor jeito de cobrir chunk[0..i): pedaço desconhecido custa caro.
+    const best = new Array(n + 1).fill(null);
+    best[0] = { cost: 0, parts: [] };
+    for (let i = 1; i <= n; i += 1) {
+      for (let j = Math.max(0, i - 16); j < i; j += 1) {
+        if (!best[j]) continue;
+        const piece = chunk.slice(j, i);
+        const known = isKnownWord(piece);
+        const cost = best[j].cost + (known ? 1 : 10 + piece.length);
+        if (!best[i] || cost < best[i].cost) best[i] = { cost, parts: [...best[j].parts, { piece, known }] };
+      }
+    }
+    const parts = best[n].parts;
+    const knownChars = parts.filter((p) => p.known).reduce((sum, p) => sum + p.piece.length, 0);
+    // Só aceita a separação se reconheceu quase tudo e não sobrou caco curto
+    // ("de" + "cor" + "and" em "decorandoaleiseca" é separação errada).
+    const shortUnknown = parts.some((p) => !p.known && p.piece.length < 5);
+    return knownChars >= n * 0.75 && !shortUnknown ? parts.map((p) => p.piece) : [chunk];
+  }
+
+  function titleCase(words) {
+    return words
+      .map((w, i) => (i > 0 && NAME_STOPWORDS.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)))
+      .join(' ');
+  }
+
+  /**
+   * Transforma um pedaço de endereço em palavras limpas.
+   * `confident` fica falso quando sobra um bloco comprido que não deu para
+   * separar ("prfadmsublime") — aí é melhor não chutar nome nenhum.
+   */
+  function wordsFromSlug(slug) {
+    let text = '';
+    try {
+      text = decodeURIComponent(slug || '');
+    } catch (e) {
+      text = slug || '';
+    }
+    const raw = normalizeForMatch(text)
+      .replace(/\.(html?|php|aspx?)$/i, '')
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean);
+    const words = [];
+    let confident = true;
+    raw.forEach((token) => {
+      // Número colado em palavra: "120receitas" -> "120" + "receitas"
+      token.split(/(?<=\d)(?=[a-z])|(?<=[a-z])(?=\d)/).forEach((part) => {
+        if (/^\d+$/.test(part)) return; // números soltos ficam de fora do nome
+        splitGlued(part).forEach((w) => {
+          // Endereço com hífens já vem separado em palavras de verdade; só
+          // desconfiamos de bloco colado que não deu para separar.
+          if (raw.length === 1 && w.length >= 9 && !isKnownWord(w)) confident = false;
+          words.push(w);
+        });
+      });
+    });
+    let clean = words.filter((w) => w.length > 1 && !URL_NOISE.has(w));
+    while (clean.length && NAME_STOPWORDS.has(clean[0])) clean.shift();
+    clean = clean.slice(0, 4);
+    while (clean.length && NAME_STOPWORDS.has(clean[clean.length - 1])) clean.pop();
+    return { words: clean, confident };
+  }
+
+  /**
+   * Palpite do nome do produto a partir da página de vendas.
+   * Devolve '' quando o endereço não diz nada (checkout, WhatsApp, link curto)
+   * ou só repete o nome da página do Facebook.
+   */
+  function guessProductName(landingPage, pageName) {
+    if (!landingPage) return '';
+    let url;
+    try {
+      url = new URL(landingPage);
+    } catch (e) {
+      return '';
+    }
+
+    const host = url.hostname.replace(/^www\./i, '').toLowerCase();
+    if (NO_PRODUCT_HOSTS.test(host) || /(^|\.)play\.google\.com$/.test(host)) return '';
+
+    // Candidatos, do mais provável ao menos provável.
+    const candidates = [];
+    const appStore = /(^|\.)apps\.apple\.com$/.test(host) && url.pathname.match(/\/app\/([^/]+)\/id\d+/i);
+    if (appStore) {
+      candidates.push(appStore[1]);
+    } else {
+      const labels = host.split('.');
+      if (SUBDOMAIN_HOSTS.test(host)) {
+        candidates.push(labels[0]);
+      } else {
+        const twoPartTld = /\.(com|net|org|gov|edu|art|blog|tec|eco)\.[a-z]{2}$/.test(host);
+        const sldIndex = labels.length - (twoPartTld ? 3 : 2);
+        // Subdomínio próprio (unoemotions.omapa.online) costuma ser o produto;
+        // nesse caso o domínio é a plataforma e não entra como palpite.
+        const subs = labels.slice(0, Math.max(0, sldIndex)).filter((sub) => !GENERIC_SUBDOMAINS.has(sub));
+        candidates.push(...subs);
+        if (!subs.length && labels[sldIndex]) candidates.push(labels[sldIndex]);
+      }
+      // No caminho, o pedaço mais específico é o último (/cozinha/air-fryer).
+      url.pathname
+        .split('/')
+        .filter((seg) => seg.length > 3 && !/^\d+$/.test(seg))
+        .reverse()
+        .slice(0, 3)
+        .forEach((seg) => candidates.push(seg));
+    }
+
+    const pageKey = normalizeForMatch(pageName || '').replace(/[^a-z0-9]/g, '');
+
+    for (const candidate of candidates) {
+      const { words, confident } = wordsFromSlug(candidate);
+      if (!words.length || !confident) continue;
+      const key = words.join('');
+      if (key.length < 4) continue;
+      // Só repete o nome da página do Facebook: não acrescenta nada.
+      if (pageKey && pageKey.includes(key)) continue;
+      return titleCase(words).slice(0, 60);
+    }
+    return '';
+  }
+
+  // ============================================================================
   // ESTÁGIO DA OFERTA (SOMENTE PELO TEMPO DE VEICULAÇÃO)
   // ============================================================================
   // A contagem de anúncios da Biblioteca não é confiável (a Meta mostra
@@ -946,9 +1151,9 @@
   //
   // Para ajustar as faixas, mude só estes números:
   const STAGE_DAYS = {
-    pre_scaling: 7,   // 1 a 6 dias  -> Teste
-    scaling: 20,      // 7 a 19 dias -> Pré-escala
-    winner: 70        // 20 a 69     -> Escalando | 70+ -> Vencedor
+    pre_scaling: 10,  // 1 a 9 dias   -> Teste
+    scaling: 30,      // 10 a 29 dias -> Pré-escala
+    winner: 150       // 30 a 149     -> Escalando | 150+ -> Vencedor
   };
 
   function classifyStage(daysRunning) {
@@ -1028,7 +1233,7 @@
    */
   function cardQueryAll(card, selector) {
     return Array.from(card.querySelectorAll(selector)).filter(
-      (el) => !el.closest('.minerai-card-injected-bar')
+      (el) => !el.closest('.minerai-injected')
     );
   }
 
@@ -1037,10 +1242,12 @@
    * dela ("Escalando", "Minerar oferta") entrariam na análise de nicho.
    */
   function getCardText(card) {
-    const full = card.innerText || '';
-    const bar = card.querySelector('.minerai-card-injected-bar');
-    const barText = bar?.innerText || '';
-    return barText ? full.split(barText).join('\n') : full;
+    let full = card.innerText || '';
+    card.querySelectorAll('.minerai-injected').forEach((el) => {
+      const text = el.innerText || '';
+      if (text) full = full.split(text).join('\n');
+    });
+    return full;
   }
 
   /**
@@ -1315,6 +1522,9 @@
 
       try {
         const parsedTarget = new URL(target);
+        // O parâmetro `u` do redirecionador da Meta vem do anunciante: só
+        // http(s) vira link na barra e no painel (nunca `javascript:`).
+        if (!/^https?:$/.test(parsedTarget.protocol)) continue;
         if (META_HOSTS.test(parsedTarget.hostname)) continue;
 
         // Remove o rastreamento que a Meta anexa ao clique.
@@ -1391,15 +1601,21 @@
       ? `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&view_all_page_id=${advertiser.pageId}&media_type=all`
       : '';
 
-    // Nome da oferta = nome da página do anunciante.
-    // Já tentamos derivar do anúncio (headline / domínio da página de vendas),
-    // mas no DOM real da Biblioteca a headline não é distinguível do resto:
-    // vinha "0:00" (cronômetro do vídeo) ou frases soltas do texto do anúncio.
-    const name = advertiser.pageName || 'Oferta Minerada';
-    const { niche, topic } = classifyOffer(fullText);
+    // Duas coisas diferentes: a PÁGINA do Facebook (quem anuncia, ex.
+    // "Fernanda Rocha") e o PRODUTO (o que se vende, ex. "Receitas
+    // Italianas"). O produto sai do endereço da página de vendas; a headline
+    // do anúncio não serve (no DOM real ela vem como "0:00" ou frase solta).
+    // Sem palpite confiável, a oferta leva o nome da página e a pessoa
+    // corrige no painel.
+    const pageName = advertiser.pageName || '';
+    const productName = guessProductName(landingPage, pageName);
+    const name = productName || pageName || 'Oferta Minerada';
+    const { niche, topic } = classifyOffer(fullText, landingPage);
 
     return {
       name,
+      pageName,
+      productName,
       creativeUrl: extractCreativeImage(card),
       pageId: advertiser.pageId || '',
       pageSlug: advertiser.pageSlug || '',
@@ -1422,7 +1638,8 @@
         advertiser.pageName ? null : 'nome',
         landingPage ? null : 'página de vendas',
         startDate ? null : 'data de início',
-        libraryId ? null : 'ID do anúncio'
+        libraryId ? null : 'ID do anúncio',
+        niche === 'Outros' ? 'categoria' : null
       ].filter(Boolean)
     };
   }
@@ -1433,6 +1650,9 @@
 
   // Guarda os dados extraídos por card para o clique não reprocessar o DOM.
   const cardDataCache = new WeakMap();
+
+  const DOWNLOAD_IDLE_HTML = `${icon('baixar')}<span class="minerai-btn-text">Baixar mídia</span>`;
+  const CAPTURE_IDLE_HTML = `${icon('picareta')}<span class="minerai-btn-text">Minerar oferta</span>`;
 
   function scanAndEnhanceCards() {
     const cards = findAdCards();
@@ -1453,11 +1673,22 @@
         card.classList.remove('minerai-card-winner');
       }
 
-      let bar = card.querySelector('.minerai-card-injected-bar');
+      // Dois blocos: a barra de ações no topo e os números logo abaixo do
+      // botão do anúncio, onde a pessoa já está olhando.
+      let created = false;
+      let bar = card.querySelector(':scope > .minerai-card-injected-bar');
       if (!bar) {
         bar = document.createElement('div');
-        bar.className = 'minerai-card-injected-bar';
+        bar.className = 'minerai-card-injected-bar minerai-injected';
         card.prepend(bar);
+        created = true;
+      }
+      let foot = card.querySelector(':scope > .minerai-card-foot');
+      if (!foot) {
+        foot = document.createElement('div');
+        foot.className = 'minerai-card-foot minerai-injected';
+        card.append(foot);
+        created = true;
       }
 
       // Só redesenha quando algo realmente mudou: evita piscar a barra a cada
@@ -1468,20 +1699,17 @@
         data.status,
         data.libraryId,
         data.landingPage,
-        data.name,
-        data.niche,
-        data.topic,
         data.creativeUrl
       ].join('|');
 
-      if (bar.dataset.mineraiSignature === signature) return;
+      if (!created && bar.dataset.mineraiSignature === signature) return;
       bar.dataset.mineraiSignature = signature;
 
       const daysLabel = data.daysRunning
-        ? `${data.daysRunning} ${data.daysRunning === 1 ? 'dia' : 'dias'}`
-        : 'data n/d';
+        ? `${data.daysRunning} ${data.daysRunning === 1 ? 'dia no ar' : 'dias no ar'}`
+        : 'sem data';
       const adsLabel = `${data.adsCount} ${data.adsCount === 1 ? 'anúncio' : 'anúncios'}`;
-      const statusLabel = STATUS_LABELS[data.status] || 'Teste';
+      const statusLabel = STATUS_LABELS[data.status] || 'Em teste';
 
       let landingHost = '';
       if (data.landingPage) {
@@ -1493,44 +1721,28 @@
       }
 
       bar.innerHTML = `
-        <div class="minerai-bar-line minerai-bar-stats">
-          <span class="minerai-pill running-days ${daysColorClass(data.daysRunning)}" title="Tempo de veiculação${data.startDate ? ` (início em ${escapeHtml(data.startDate)})` : ''} — azul até ${DAYS_COLOR.yellow - 1} dias, amarelo de ${DAYS_COLOR.yellow} a ${DAYS_COLOR.green - 1}, verde a partir de ${DAYS_COLOR.green}">
-            <span class="minerai-pill-icon">⏳</span>${escapeHtml(daysLabel)}
-          </span>
-          <span class="minerai-pill creatives" title="Quantos anúncios a Meta diz que usam este criativo (não entra no cálculo do estágio)">
-            <span class="minerai-pill-icon">📊</span>${escapeHtml(adsLabel)}
-          </span>
-          <span class="minerai-pill stage stage-${escapeHtml(data.status)}" title="Estágio pelo tempo de veiculação: até ${STAGE_DAYS.pre_scaling - 1} dias em teste, ${STAGE_DAYS.pre_scaling} a ${STAGE_DAYS.scaling - 1} pré-escala, ${STAGE_DAYS.scaling} a ${STAGE_DAYS.winner - 1} escalando, ${STAGE_DAYS.winner}+ vencedor">
-            <span class="minerai-pill-icon">🏷️</span>${escapeHtml(statusLabel)}
-          </span>
+        <div class="minerai-bar-line minerai-card-actions">
+          <button class="minerai-download-btn" type="button" title="Baixar o vídeo ou a imagem deste anúncio">${DOWNLOAD_IDLE_HTML}</button>
+          <button class="minerai-capture-btn" type="button" data-lib-id="${escapeHtml(data.libraryId)}" title="Salvar esta oferta no painel Mineraí">${CAPTURE_IDLE_HTML}</button>
         </div>
-
-        <div class="minerai-bar-line minerai-bar-target">
-          <span class="minerai-advertiser" title="${escapeHtml(data.name)}">👤 ${escapeHtml(data.name)}</span>
-          <span class="minerai-niche" title="Categoria: ${escapeHtml(data.niche)}${data.topic ? ` | Tema identificado no anúncio: ${escapeHtml(data.topic)}` : ""}">🗂️ ${escapeHtml(data.topic || data.niche)}</span>
-        </div>
-
         <div class="minerai-bar-line minerai-bar-links">
           ${
             landingHost
-              ? `<a class="minerai-landing-link" href="${escapeHtml(data.landingPage)}" target="_blank" rel="noreferrer" title="Abrir página de vendas: ${escapeHtml(data.landingPage)}">🔗 ${escapeHtml(landingHost)}</a>`
-              : `<span class="minerai-landing-missing" title="Nenhum link de destino encontrado neste card">🔗 sem link de destino</span>`
+              ? `<a class="minerai-link" href="${escapeHtml(data.landingPage)}" target="_blank" rel="noreferrer" title="Abrir a página de vendas: ${escapeHtml(data.landingPage)}">${icon('link', 12)}<span>${escapeHtml(landingHost)}</span></a>`
+              : `<span class="minerai-link-missing" title="Este anúncio não tem link de página de vendas">${icon('link', 12)}<span>sem página de vendas</span></span>`
           }
           ${
             data.adUrl
-              ? `<a class="minerai-ad-link" href="${escapeHtml(data.adUrl)}" target="_blank" rel="noreferrer" title="Abrir este anúncio na Biblioteca (ID ${escapeHtml(data.libraryId)})">🧾 ver anúncio</a>`
-              : `<span class="minerai-landing-missing" title="Não foi possível ler a identificação da biblioteca neste card">🧾 sem ID do anúncio</span>`
+              ? `<a class="minerai-link" href="${escapeHtml(data.adUrl)}" target="_blank" rel="noreferrer" title="Abrir só este anúncio na Biblioteca (ID ${escapeHtml(data.libraryId)})">${icon('externo', 12)}<span>ver anúncio</span></a>`
+              : `<span class="minerai-link-missing" title="A Biblioteca não mostrou a identificação deste anúncio">${icon('externo', 12)}<span>sem ID do anúncio</span></span>`
           }
         </div>
+      `;
 
-        <div class="minerai-bar-line minerai-card-actions">
-          <button class="minerai-download-btn" type="button" title="Baixar o criativo (vídeo ou imagem)">
-            <span class="minerai-btn-icon">⬇️</span><span class="minerai-btn-text">Baixar mídia</span>
-          </button>
-          <button class="minerai-capture-btn" type="button" data-lib-id="${escapeHtml(data.libraryId)}" title="Enviar esta oferta para o painel Mineraí">
-            <span class="minerai-btn-icon">⛏️</span><span class="minerai-btn-text">Minerar oferta</span>
-          </button>
-        </div>
+      foot.innerHTML = `
+        <span class="minerai-pill running-days ${daysColorClass(data.daysRunning)}" title="Há quanto tempo o anúncio está no ar${data.startDate ? ` (começou em ${escapeHtml(data.startDate)})` : ''}. Azul até ${DAYS_COLOR.yellow - 1} dias, amarelo de ${DAYS_COLOR.yellow} a ${DAYS_COLOR.green - 1}, verde a partir de ${DAYS_COLOR.green}.">${icon('relogio')}<span>${escapeHtml(daysLabel)}</span></span>
+        <span class="minerai-pill creatives" title="Quantos anúncios a Meta diz que usam este criativo">${icon('camadas')}<span>${escapeHtml(adsLabel)}</span></span>
+        <span class="minerai-pill stage stage-${escapeHtml(data.status)}" title="Estágio pelo tempo no ar: até ${STAGE_DAYS.pre_scaling - 1} dias em teste, ${STAGE_DAYS.pre_scaling} a ${STAGE_DAYS.scaling - 1} pré-escala, ${STAGE_DAYS.scaling} a ${STAGE_DAYS.winner - 1} escalando, ${STAGE_DAYS.winner}+ vencedor">${icon('etiqueta')}<span>${escapeHtml(statusLabel)}</span></span>
       `;
 
       const captureBtn = bar.querySelector('.minerai-capture-btn');
@@ -1553,11 +1765,9 @@
         };
       }
 
-      // O link da página de vendas fica dentro do card da Meta, que intercepta
-      // cliques: paramos a propagação para o card não abrir por baixo.
       // Os links ficam dentro do card da Meta, que intercepta cliques:
       // paramos a propagação para o card não abrir por baixo.
-      bar.querySelectorAll('.minerai-landing-link, .minerai-ad-link').forEach((link) => {
+      bar.querySelectorAll('.minerai-link').forEach((link) => {
         link.onclick = (e) => e.stopPropagation();
       });
     });
@@ -1581,7 +1791,7 @@
     // 2. Procura imagem em alta resolução do criativo
     const images = cardQueryAll(card, 'img').filter((img) => {
       const src = img.src || '';
-      if (!src || src.startsWith('data:') || src.includes('emoji')) return false;
+      if (!/^https?:/i.test(src) || src.includes('emoji')) return false;
       if (src.includes('/rsrc.php/') || src.includes('graph.facebook.com')) return false;
       return true;
     });
@@ -1607,6 +1817,8 @@
   }
 
   async function triggerDirectDownload(url, filename) {
+    // Só mídia servida por http(s) chega aqui; qualquer outro esquema é recusado.
+    if (!/^https?:/i.test(url || '')) throw new Error('Endereço de mídia inválido.');
     try {
       const res = await fetch(url);
       const blob = await res.blob();
@@ -1639,36 +1851,33 @@
     }
 
     btn.disabled = true;
-    btn.innerHTML = `<span class="minerai-btn-icon">⏳</span><span class="minerai-btn-text">Baixando...</span>`;
+    btn.innerHTML = `${icon('relogio')}<span class="minerai-btn-text">Baixando...</span>`;
 
     safeSendMessage(
       { type: 'DOWNLOAD_MEDIA', url: media.url, filename: media.filename },
       (response) => {
         btn.disabled = false;
         if (response && response.success) {
-          btn.innerHTML = `<span class="minerai-btn-icon">✓</span><span class="minerai-btn-text">Baixado!</span>`;
+          btn.innerHTML = `${icon('check')}<span class="minerai-btn-text">Baixado!</span>`;
           showToast(`Download de ${media.type === 'video' ? 'vídeo' : 'imagem'} iniciado!`);
           setTimeout(() => {
-            btn.innerHTML = `<span class="minerai-btn-icon">⬇️</span><span class="minerai-btn-text">Baixar mídia</span>`;
+            btn.innerHTML = DOWNLOAD_IDLE_HTML;
           }, 2500);
         } else {
           triggerDirectDownload(media.url, media.filename).then(() => {
-            btn.innerHTML = `<span class="minerai-btn-icon">✓</span><span class="minerai-btn-text">Baixado!</span>`;
+            btn.innerHTML = `${icon('check')}<span class="minerai-btn-text">Baixado!</span>`;
             showToast(`Download de ${media.type === 'video' ? 'vídeo' : 'imagem'} iniciado!`);
             setTimeout(() => {
-              btn.innerHTML = `<span class="minerai-btn-icon">⬇️</span><span class="minerai-btn-text">Baixar mídia</span>`;
+              btn.innerHTML = DOWNLOAD_IDLE_HTML;
             }, 2500);
           }).catch(() => {
-            btn.innerHTML = `<span class="minerai-btn-icon">⬇️</span><span class="minerai-btn-text">Baixar mídia</span>`;
+            btn.innerHTML = DOWNLOAD_IDLE_HTML;
             showToast('Erro ao baixar arquivo de mídia.');
           });
         }
       }
     );
   }
-
-  const CAPTURE_IDLE_HTML =
-    '<span class="minerai-btn-icon">⛏️</span><span class="minerai-btn-text">Minerar oferta</span>';
 
   function handleCaptureOffer(data, btn) {
     if (!currentUser) {
@@ -1680,7 +1889,7 @@
 
     btn.disabled = true;
     btn.className = 'minerai-capture-btn';
-    btn.innerHTML = '<span class="minerai-btn-icon">⏳</span><span class="minerai-btn-text">Salvando...</span>';
+    btn.innerHTML = `${icon('relogio')}<span class="minerai-btn-text">Salvando...</span>`;
 
     safeSendMessage(
       { type: 'SAVE_OFFER', offer: data },
@@ -1690,7 +1899,7 @@
         if (response && response.success) {
           const updated = response.data?.updated;
           btn.className = 'minerai-capture-btn mined-success';
-          btn.innerHTML = `<span class="minerai-btn-icon">✓</span><span class="minerai-btn-text">${updated ? 'Atualizado!' : 'Minerado!'}</span>`;
+          btn.innerHTML = `${icon('check')}<span class="minerai-btn-text">${updated ? 'Atualizado!' : 'Minerado!'}</span>`;
 
           // Avisa em qual campo a Meta não expôs o dado, para o usuário poder
           // completar à mão no painel em vez de descobrir depois.
@@ -1707,7 +1916,7 @@
           }, 2500);
         } else {
           btn.className = 'minerai-capture-btn mined-error';
-          btn.innerHTML = '<span class="minerai-btn-icon">✕</span><span class="minerai-btn-text">Erro ao salvar</span>';
+          btn.innerHTML = `${icon('x')}<span class="minerai-btn-text">Erro ao salvar</span>`;
           showToast(response?.error || 'Erro ao conectar ao banco de dados.');
           setTimeout(() => {
             btn.className = 'minerai-capture-btn';

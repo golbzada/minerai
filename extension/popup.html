@@ -8,20 +8,17 @@
 </head>
 <body>
   <div class="popup-container">
-    <!-- Header com Logo Mineraí -->
+    <!-- Cabeçalho: marca + versão. Painel escuro, igual ao menu lateral do site. -->
     <header class="popup-header">
+      <!-- Mesma marca do menu lateral do painel -->
       <div class="brand-logo">
-        <div class="brand-mark">
-          <span>M</span>
-        </div>
-        <div class="brand-info">
-          <h1>Mineraí</h1>
-          <span class="brand-tag">Extensão Oficial</span>
-        </div>
+        <div class="brand-mark">M</div>
+        <h1 class="brand-wordmark">Minera<span class="brand-i">í</span></h1>
       </div>
+      <span class="version-pill" id="versao"></span>
     </header>
 
-    <!-- Card de Status do Usuário -->
+    <!-- Quem está conectado -->
     <section class="status-card" id="user-status-card">
       <div class="status-loading" id="status-loading">
         <div class="spinner"></div>
@@ -29,31 +26,37 @@
       </div>
 
       <div class="status-online" id="status-online" style="display: none;">
-        <div class="user-avatar-badge">👤</div>
+        <div class="user-avatar" id="user-avatar">M</div>
         <div class="user-details">
-          <span class="user-label">Conectado como:</span>
           <strong class="user-name" id="user-display-name">Carregando...</strong>
           <span class="user-email" id="user-display-email">email@exemplo.com</span>
         </div>
+        <span class="status-pill on"><span class="dot"></span>Conectado</span>
       </div>
 
       <div class="status-offline" id="status-offline" style="display: none;">
-        <div class="offline-icon">🔒</div>
+        <div class="offline-icon" data-icon="cadeado"></div>
         <div class="offline-details">
           <strong>Não conectado</strong>
-          <p>Faça login no Mineraí para minerar ofertas com 1 clique.</p>
+          <p>Entre no Mineraí para minerar ofertas com 1 clique.</p>
         </div>
       </div>
     </section>
 
-    <!-- Ações Rápidas -->
+    <!-- Ações rápidas -->
     <div class="actions-group">
       <button class="btn-primary" id="btn-open-dash">
-        <span>🚀 Abrir Painel Mineraí</span>
+        <span class="btn-ico" data-icon="painel"></span>
+        <span class="btn-label">Abrir painel Mineraí</span>
       </button>
 
-      <button class="btn-secondary" id="btn-open-meta">
-        <span>⚡ Ir para a Biblioteca Meta</span>
+      <button class="btn-row" id="btn-open-meta">
+        <span class="row-ico" data-icon="biblioteca"></span>
+        <span class="row-text">
+          <strong>Biblioteca de Anúncios</strong>
+          <small>Onde você garimpa as ofertas</small>
+        </span>
+        <span class="row-arrow" data-icon="externo"></span>
       </button>
     </div>
 
@@ -61,33 +64,40 @@
          referência. Roda no próprio navegador, sem servidor. -->
     <section class="modelar-box">
       <div class="modelar-titulo">
-        <strong>📐 Modelar página</strong>
-        <small>Baixa a estrutura e o design system para você modelar em cima</small>
+        <span class="modelar-ico" data-icon="modelar"></span>
+        <div>
+          <strong>Modelar página</strong>
+          <small>Baixa a estrutura e as cores de uma página de vendas para você montar a sua em cima.</small>
+        </div>
       </div>
 
-      <input
-        type="url"
-        id="modelar-url"
-        class="modelar-input"
-        placeholder="https://pagina-de-vendas.com.br"
-        autocomplete="off"
-        spellcheck="false"
-      />
+      <label class="modelar-campo">
+        <span class="campo-ico" data-icon="link"></span>
+        <input
+          type="url"
+          id="modelar-url"
+          class="modelar-input"
+          placeholder="https://pagina-de-vendas.com.br"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </label>
 
       <button class="btn-primary modelar-btn" id="btn-modelar">
-        <span>📐 Baixar estrutura</span>
+        <span class="btn-ico" data-icon="baixar"></span>
+        <span class="btn-label">Baixar estrutura</span>
       </button>
 
       <button class="btn-secondary modelar-btn" id="btn-autorizar" style="display: none;">
-        <span>🔓 Autorizar modelagem no painel</span>
+        <span class="btn-ico" data-icon="chave"></span>
+        <span class="btn-label">Liberar modelagem no painel</span>
       </button>
 
       <p class="modelar-aviso" id="modelar-aviso"></p>
     </section>
 
-    <!-- Rodapé -->
     <footer class="popup-footer">
-      <span>Inteligência de Anúncios</span>
+      <span>Inteligência de anúncios</span>
     </footer>
   </div>
 

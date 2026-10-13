@@ -1,24 +1,36 @@
 import React, { useState } from 'react';
 import Chart from './Chart';
+import StarRating from './StarRating';
 import { STATUS_CONFIG } from '../utils/metaParser';
 import { normalizeHistory, resolveRunningDays, resolveStatus, decodeNotes } from '../utils/offerMeta';
 import { safeHttpUrl, safeImageSrc, safeCreativeThumb } from '../utils/url';
+import { getExtras, STAGES } from '../utils/offerExtras';
 
 export default function OfferCard({
   offer,
-  index,
   onEdit,
   onDelete,
   onAddResult,
   onOpenHistory,
   onDuplicate,
+  onOpen,
+  onToggleFav,
+  onRate,
   readOnly = false,
   // Plano inativo: o dono vê tudo, mas os botões de escrita somem.
-  locked = false
+  locked = false,
+  // Seleção em lote
+  selectable = false,
+  selected = false,
+  onSelect,
+  // Possíveis duplicadas desta oferta: [{ id, name, reason }]
+  duplicates = []
 }) {
   const [showNotes, setShowNotes] = useState(false);
 
   const canWrite = !readOnly && !locked;
+  const extras = getExtras(offer);
+  const stageLabel = STAGES.find((s) => s.key === extras.stage)?.label;
 
   // Link da biblioteca (o anúncio na Meta) e link da página de vendas são
   // coisas diferentes e ambos precisam ficar acessíveis no card.
@@ -27,11 +39,7 @@ export default function OfferCard({
   const salesPageUrl = safeHttpUrl(offer.destination_url || offer.landing_page || '');
   const hasSalesPage = Boolean(salesPageUrl) && salesPageUrl !== libraryUrl;
 
-  // A imagem principal do card é o CRIATIVO: é o que identifica a oferta de
-  // relance. A foto do anunciante vira um selo pequeno por cima.
   // Páginas com apelido (facebook.com/lojaxyz) não expõem ID numérico no card.
-  // Nesses casos o apelido é a identificação disponível — e serve tanto para
-  // exibir quanto para buscar a foto no Graph.
   const numericPageId =
     offer.page_id && offer.page_id !== 'N/A' && offer.page_id !== '4' && /^\d+$/.test(offer.page_id)
       ? offer.page_id
@@ -42,9 +50,6 @@ export default function OfferCard({
       : null;
   const graphKey = numericPageId || pageSlug || null;
 
-  // O que mostrar na linha do ID. Ela nunca fica vazia: o ID numérico quando
-  // existe, senão o apelido da página (que é o identificador dela no Facebook,
-  // mesmo não sendo número) e, em último caso, um travessão.
   const identificacao = numericPageId
     ? { texto: numericPageId, titulo: `Identificação da página do anunciante na Meta: ${numericPageId}` }
     : pageSlug
@@ -56,8 +61,7 @@ export default function OfferCard({
     safeImageSrc(offer.image_url) ||
     (graphKey ? `https://graph.facebook.com/${encodeURIComponent(graphKey)}/picture?type=large` : null);
 
-  // Só o criativo (data:image/*). A foto do anunciante fica de reserva para a
-  // oferta que ainda não tem criativo salvo.
+  // Só o criativo (data:image/*). A foto do anunciante fica de reserva.
   const mainSources = [safeCreativeThumb(offer.creative_thumb), advertiserPhoto].filter(Boolean);
 
   const [mainIndex, setMainIndex] = useState(0);
@@ -65,7 +69,10 @@ export default function OfferCard({
 
   const initial = (offer.name || '?').trim().charAt(0).toUpperCase();
 
-  // Recalculado a partir da data de início: anda sozinho a cada dia.
+  // Página do Facebook (quem anuncia), quando é diferente do nome do produto.
+  const pageName = typeof offer.meta?.page_name === 'string' ? offer.meta.page_name.trim() : '';
+  const showPageName = pageName && pageName.toLowerCase() !== (offer.name || '').trim().toLowerCase();
+
   const runningDays = resolveRunningDays(offer);
   const adsCount = offer.ads_count != null ? Number(offer.ads_count) : 1;
   const statusCfg = STATUS_CONFIG[resolveStatus(offer)] || STATUS_CONFIG.testing;
@@ -88,8 +95,26 @@ export default function OfferCard({
     : { title: 'Esta oferta não tem link da Biblioteca de Anúncios' };
 
   return (
-    <article className="offer-item">
+    <article className={`offer-item ${selected ? 'selected' : ''} ${extras.fav ? 'is-fav' : ''}`}>
       <div className="card">
+        {selectable && (
+          <label className="select-box" title="Selecionar para ação em lote">
+            <input type="checkbox" checked={selected} onChange={() => onSelect && onSelect(offer.id)} aria-label={`Selecionar ${offer.name}`} />
+          </label>
+        )}
+
+        {!readOnly && onToggleFav && (
+          <button
+            type="button"
+            className={`fav-btn card-fav ${extras.fav ? 'active' : ''}`}
+            onClick={() => onToggleFav(offer)}
+            title={extras.fav ? 'Tirar das favoritas' : 'Favoritar oferta'}
+            aria-label="Favoritar"
+          >
+            {extras.fav ? '★' : '☆'}
+          </button>
+        )}
+
         {canWrite && (
           <button
             className="delete-top"
@@ -104,13 +129,11 @@ export default function OfferCard({
         )}
 
         <PhotoWrapper className="photo" {...photoProps}>
-          <span className="index">{String(index + 1).padStart(2, '0')}</span>
           {mainImage ? (
             <img
               key={mainImage}
               src={mainImage}
               alt={offer.name}
-              // Tenta a próxima fonte antes de desistir da imagem.
               onError={() => setMainIndex((i) => i + 1)}
             />
           ) : (
@@ -122,9 +145,6 @@ export default function OfferCard({
 
         <div className="content">
           <div>
-            {/* Status sozinho na primeira linha e categoria na linha de baixo:
-                lado a lado, a categoria empurrava o status e abria um vão
-                branco quando o nome era curto. */}
             <div className="badge-row">
               <span
                 className="status-badge"
@@ -136,6 +156,14 @@ export default function OfferCard({
               >
                 {statusCfg.label}
               </span>
+              {!readOnly && extras.stage !== 'radar' && (
+                <span className={`stage-badge stage-${extras.stage}`} title="Coluna na esteira">{stageLabel}</span>
+              )}
+              {duplicates.length > 0 && (
+                <span className="dup-badge" title={`Possível duplicada de:\n${duplicates.map((d) => `• ${d.name} (${d.reason})`).join('\n')}`}>
+                  ⚠ duplicada?
+                </span>
+              )}
             </div>
 
             {(offer.niche || offer.topic) && (
@@ -149,7 +177,23 @@ export default function OfferCard({
               </div>
             )}
 
-            <h2 title={offer.name}>{offer.name}</h2>
+            {onOpen ? (
+              <h2 title="Abrir a página da oferta">
+                <button type="button" className="offer-title-btn" onClick={() => onOpen(offer)}>{offer.name}</button>
+              </h2>
+            ) : (
+              <h2 title={offer.name}>{offer.name}</h2>
+            )}
+            {showPageName && (
+              <p className="card-page-name" title="Página do Facebook que anuncia">por {pageName}</p>
+            )}
+
+            {!readOnly && onRate && (
+              <div className="card-rating">
+                <StarRating value={extras.rating} onChange={(n) => onRate(offer, n)} size="sm" />
+              </div>
+            )}
+
             <p className="page-id">
               <span title="Tempo de veiculação, atualizado automaticamente todo dia">
                 ⏳ {runningDays} {runningDays === 1 ? 'dia rodando' : 'dias rodando'}
@@ -157,9 +201,6 @@ export default function OfferCard({
               <span title="Anúncios ativos na última medição">📊 {adsCount} ativos</span>
             </p>
 
-            {/* O ID fica SEMPRE nesta linha, nunca ao lado dos dias. Some ela
-                num card só e ele fica mais curto que os vizinhos da grade,
-                abrindo uma faixa branca embaixo do gráfico. */}
             <p className="page-id page-id-line">
               <span title={identificacao.titulo}>🆔 {identificacao.texto}</span>
             </p>
@@ -173,6 +214,13 @@ export default function OfferCard({
               >
                 🔗 Página de vendas
               </a>
+            )}
+
+            {!readOnly && extras.tags.length > 0 && (
+              <div className="tag-list small card-tags">
+                {extras.tags.slice(0, 4).map((t) => <span key={t} className="tag-chip">{t}</span>)}
+                {extras.tags.length > 4 && <span className="tag-chip">+{extras.tags.length - 4}</span>}
+              </div>
             )}
           </div>
 
@@ -236,7 +284,6 @@ export default function OfferCard({
         </div>
       </div>
 
-      {/* Anotações de Espionagem */}
       {showNotes && notesText && (
         <div className="notes-box">
           <strong>💡 Anotação de Espionagem:</strong>
@@ -244,7 +291,6 @@ export default function OfferCard({
         </div>
       )}
 
-      {/* Evolução Diária */}
       <section
         className="tracker"
         onClick={() => onOpenHistory && onOpenHistory(offer)}

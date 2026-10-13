@@ -2,7 +2,46 @@
 // MINERAÍ EXTENSÃO - POPUP CONTROLLER
 // ==============================================================================
 
+// Ícones de linha, os mesmos do painel e da barra na Biblioteca. Substituem
+// os emojis: emoji muda de cara em cada sistema e destoa da identidade.
+const ICON_PATHS = {
+  painel: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  biblioteca: 'M4 5h16v14H4zM8 9h8M8 13h5',
+  externo: 'M14 4h6v6M20 4l-9 9M19 13v6H5V5h6',
+  modelar: 'M4 5h16v14H4zM4 10h16M9 10v9',
+  link: 'M10 14a4 4 0 0 0 5.66 0l2.83-2.83a4 4 0 0 0-5.66-5.66L11.5 6.8M14 10a4 4 0 0 0-5.66 0l-2.83 2.83a4 4 0 0 0 5.66 5.66l1.33-1.3',
+  baixar: 'M12 4v11M7 10l5 5 5-5M5 20h14',
+  chave: 'M15 7a4 4 0 1 1-3.5 6L5 19.5V22h2.5v-2H10v-2.5l1.5-1.5A4 4 0 0 1 15 7zM16 8h.01',
+  cadeado: 'M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3',
+  entrar: 'M10 17l5-5-5-5M15 12H3M14 4h6v16h-6',
+  relogio: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
+  check: 'M5 12l4 4L19 6',
+  refazer: 'M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5'
+};
+
+function icon(name, size = 16) {
+  const d = ICON_PATHS[name] || ICON_PATHS.painel;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="${d}"/></svg>`;
+}
+
+/** Conteúdo padrão de botão: ícone + texto. */
+function rotulo(nomeIcone, texto) {
+  return `<span class="btn-ico">${icon(nomeIcone)}</span><span class="btn-label">${texto}</span>`;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  // Desenha os ícones marcados no HTML com data-icon.
+  document.querySelectorAll('[data-icon]').forEach((el) => {
+    el.innerHTML = icon(el.dataset.icon, Number(el.dataset.size) || 16);
+  });
+
+  const versao = document.getElementById('versao');
+  try {
+    versao.textContent = `v${chrome.runtime.getManifest().version}`;
+  } catch (e) {
+    versao.style.display = 'none';
+  }
+
   const loadingEl = document.getElementById('status-loading');
   const onlineEl = document.getElementById('status-online');
   const offlineEl = document.getElementById('status-offline');
@@ -10,6 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const emailEl = document.getElementById('user-display-email');
   const btnOpenDash = document.getElementById('btn-open-dash');
   const btnOpenMeta = document.getElementById('btn-open-meta');
+  const avatarEl = document.getElementById('user-avatar');
 
   // 1. Checar status do usuário
   // Desconectado, o botão principal vira "Conectar conta" — antes ele dizia
@@ -18,9 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadingEl.style.display = 'none';
     onlineEl.style.display = conectado ? 'flex' : 'none';
     offlineEl.style.display = conectado ? 'none' : 'flex';
-    btnOpenDash.innerHTML = conectado
-      ? '<span>🚀 Abrir Painel Mineraí</span>'
-      : '<span>🔑 Conectar conta</span>';
+    btnOpenDash.innerHTML = conectado ? rotulo('painel', 'Abrir painel Mineraí') : rotulo('entrar', 'Conectar conta');
   }
 
   function conferirLogin() {
@@ -29,8 +67,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const conectado = Boolean(response && response.authenticated && response.user);
       if (conectado) {
         const user = response.user;
-        nameEl.textContent = user.name || user.email?.split('@')[0] || 'Minerador';
+        const nome = user.name || user.email?.split('@')[0] || 'Minerador';
+        nameEl.textContent = nome;
         emailEl.textContent = user.email || '';
+        // Iniciais do nome no lugar do bonequinho.
+        const partes = nome.trim().split(/\s+/).filter(Boolean);
+        avatarEl.textContent = ((partes[0]?.[0] || 'M') + (partes.length > 1 ? partes[partes.length - 1][0] : '')).toUpperCase();
       }
       pintarEstado(conectado);
     });
@@ -68,9 +110,9 @@ document.addEventListener('DOMContentLoaded', () => {
     aviso.className = 'modelar-aviso' + (tipo ? ' ' + tipo : '');
   }
 
-  function ocupado(estado, texto) {
+  function ocupado(estado, texto, nomeIcone) {
     btnModelar.disabled = estado;
-    btnModelar.innerHTML = `<span>${texto}</span>`;
+    btnModelar.innerHTML = rotulo(nomeIcone || (estado ? 'relogio' : 'baixar'), texto);
   }
 
   async function modelar() {
@@ -90,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    ocupado(true, '⏳ Abrindo a página...');
+    ocupado(true, 'Abrindo a página...');
     mostrar('Carregando e capturando. Pode levar alguns segundos.');
 
     try {
@@ -100,12 +142,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const concedida = await chrome.permissions.request({ origins: [origem] });
         if (!concedida) {
           mostrar('Sem a autorização não dá para ler a página.', 'erro');
-          ocupado(false, '📐 Baixar estrutura');
+          ocupado(false, 'Baixar estrutura');
           return;
         }
       }
 
-      ocupado(true, '⏳ Capturando...');
+      ocupado(true, 'Capturando...');
 
       const resposta = await chrome.runtime.sendMessage({
         type: 'MODELAR_PAGINA',
@@ -125,7 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
       mostrar(e.message || 'Falha inesperada ao capturar.', 'erro');
     } finally {
-      ocupado(false, '📐 Baixar estrutura');
+      ocupado(false, 'Baixar estrutura');
     }
   }
 
@@ -144,7 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const liberado = await chrome.permissions.contains(TODOS_OS_SITES);
     btnAutorizar.style.display = liberado ? 'none' : 'flex';
     if (liberado && !aviso.textContent) {
-      mostrar('Modelagem liberada — dá para usar direto pelo painel.', 'ok');
+      mostrar('Modelagem liberada: dá para usar direto pelo painel.', 'ok');
     }
   }
 

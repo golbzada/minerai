@@ -1,0 +1,32 @@
+name: Semgrep
+
+# Varredura de segurança a cada push e pull request. Falha o job se algum
+# achado aparecer: corrija ou marque com `// nosemgrep: <regra>` justificando.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 6 1 * *'
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      # Fixado pelo SHA do commit (tag é mutável e poderia ser trocada).
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Semgrep (site + extensão)
+        run: >-
+          semgrep scan
+          --config p/default
+          --config p/javascript
+          --config p/react
+          --config p/owasp-top-ten
+          --config p/secrets
+          --metrics=off
+          --error

@@ -2,8 +2,8 @@
 -- MINERAÍ - ESQUEMA DE BANCO DE DADOS POSTGRESQL (SUPABASE)
 -- ==============================================================================
 -- Estado FINAL do banco, já com as correções de segurança da migração
--- supabase/migrations/002_security_fixes.sql. Serve para instalar do zero.
--- Em um banco que já existe, rode a migração 002 em vez deste arquivo.
+-- supabase/migrations/002_security_fixes.sql e 003_least_privilege.sql. Serve
+-- para instalar do zero. Em um banco que já existe, rode as migrações.
 --
 -- Premissa de segurança: a chave anon é pública (fica no bundle do front e na
 -- extensão). Tudo que protege dados está aqui: RLS, privilégios de coluna,
@@ -150,6 +150,25 @@ revoke all on table public.shares from anon;
 -- Perfil: o usuário só atualiza name e cpf_cnpj. Criação é pelo trigger.
 revoke insert, update, delete on table public.profiles from anon, authenticated;
 grant update (name, cpf_cnpj, updated_at) on table public.profiles to authenticated;
+
+-- Ninguém trunca, referencia nem cria trigger pela API (vinha do GRANT ALL padrão).
+revoke truncate, references, trigger
+  on table public.profiles, public.tabs, public.offers, public.shares
+  from anon, authenticated;
+
+-- id, user_id e created_at são imutáveis: UPDATE só nas colunas que o painel
+-- e a extensão realmente escrevem (migração 003).
+revoke update on table public.offers from authenticated;
+grant update (
+  name, page_id, ads_count, library_url, landing_page, affiliate_link,
+  funnel_notes, status, niche, avatar_url, creative_thumb, history, tab_id, updated_at
+) on table public.offers to authenticated;
+
+revoke update on table public.tabs from authenticated;
+grant update (name) on table public.tabs to authenticated;
+
+-- Share é gerado e revogado, nunca editado.
+revoke update on table public.shares from authenticated;
 
 -- ==============================================================================
 -- FUNÇÕES
@@ -326,13 +345,18 @@ as $$
   limit 1;
 $$;
 
-revoke all on function public.sanitize_share_snapshot(jsonb) from public;
+revoke all on function public.sanitize_share_snapshot(jsonb) from public, anon, authenticated;
 revoke all on function public.get_share_by_token(text) from public;
 grant execute on function public.get_share_by_token(text) to anon, authenticated, service_role;
 
 revoke all on function public.handle_new_user() from public, anon, authenticated;
 revoke all on function public.sync_profile_email() from public, anon, authenticated;
 revoke all on function public.protect_profile_columns() from public, anon, authenticated;
+
+-- Função nova criada em public não nasce exposta à API: quem criar uma RPC
+-- precisa dar GRANT EXECUTE de propósito (migração 003).
+alter default privileges for role postgres in schema public
+  revoke execute on functions from anon, authenticated;
 
 -- Função utilitária criada pelo painel do Supabase que fica exposta como RPC.
 do $$
@@ -358,97 +382,91 @@ alter table public.shares enable row level security;
 drop policy if exists "Usuários podem ver seu próprio perfil" on public.profiles;
 create policy "Usuários podem ver seu próprio perfil"
   on public.profiles for select to authenticated
-  using (auth.uid() = id);
+  using ((select auth.uid()) = id);
 
 drop policy if exists "Usuários podem atualizar seu próprio perfil" on public.profiles;
 create policy "Usuários podem atualizar seu próprio perfil"
   on public.profiles for update to authenticated
-  using (auth.uid() = id)
-  with check (auth.uid() = id);
+  using ((select auth.uid()) = id)
+  with check ((select auth.uid()) = id);
 
 -- Tabs (escrita exige plano ativo)
 drop policy if exists "Usuários podem ver suas próprias abas" on public.tabs;
 create policy "Usuários podem ver suas próprias abas"
   on public.tabs for select to authenticated
-  using (auth.uid() = user_id);
+  using ((select auth.uid()) = user_id);
 
 drop policy if exists "Usuários podem criar abas" on public.tabs;
 create policy "Usuários podem criar abas"
   on public.tabs for insert to authenticated
-  with check (auth.uid() = user_id and public.has_active_plan());
+  with check ((select auth.uid()) = user_id and public.has_active_plan());
 
 drop policy if exists "Usuários podem atualizar suas próprias abas" on public.tabs;
 create policy "Usuários podem atualizar suas próprias abas"
   on public.tabs for update to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id and public.has_active_plan());
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id and public.has_active_plan());
 
 drop policy if exists "Usuários podem excluir suas próprias abas" on public.tabs;
 create policy "Usuários podem excluir suas próprias abas"
   on public.tabs for delete to authenticated
-  using (auth.uid() = user_id);
+  using ((select auth.uid()) = user_id);
 
 -- Offers (escrita exige plano ativo e tab_id do próprio usuário)
 drop policy if exists "Usuários podem ver suas próprias ofertas" on public.offers;
 create policy "Usuários podem ver suas próprias ofertas"
   on public.offers for select to authenticated
-  using (auth.uid() = user_id);
+  using ((select auth.uid()) = user_id);
 
 drop policy if exists "Usuários podem criar ofertas" on public.offers;
 create policy "Usuários podem criar ofertas"
   on public.offers for insert to authenticated
   with check (
-    auth.uid() = user_id
+    (select auth.uid()) = user_id
     and public.has_active_plan()
-    and (tab_id is null or exists (select 1 from public.tabs t where t.id = tab_id and t.user_id = auth.uid()))
+    and (tab_id is null or exists (select 1 from public.tabs t where t.id = tab_id and t.user_id = (select auth.uid())))
   );
 
 drop policy if exists "Usuários podem atualizar suas próprias ofertas" on public.offers;
 create policy "Usuários podem atualizar suas próprias ofertas"
   on public.offers for update to authenticated
-  using (auth.uid() = user_id)
+  using ((select auth.uid()) = user_id)
   with check (
-    auth.uid() = user_id
+    (select auth.uid()) = user_id
     and public.has_active_plan()
-    and (tab_id is null or exists (select 1 from public.tabs t where t.id = tab_id and t.user_id = auth.uid()))
+    and (tab_id is null or exists (select 1 from public.tabs t where t.id = tab_id and t.user_id = (select auth.uid())))
   );
 
 drop policy if exists "Usuários podem excluir suas próprias ofertas" on public.offers;
 create policy "Usuários podem excluir suas próprias ofertas"
   on public.offers for delete to authenticated
-  using (auth.uid() = user_id);
+  using ((select auth.uid()) = user_id);
 
--- Shares (sem leitura anônima direta; público só via get_share_by_token)
+-- Shares (sem leitura anônima direta; público só via get_share_by_token).
+-- Não há policy de UPDATE: share é gerado e revogado, nunca editado.
 drop policy if exists "Acesso público anônimo a links de compartilhamento ativos" on public.shares;
 drop policy if exists "Usuários podem gerenciar seus compartilhamentos" on public.shares;
 
 drop policy if exists "Usuários podem ver seus compartilhamentos" on public.shares;
 create policy "Usuários podem ver seus compartilhamentos"
   on public.shares for select to authenticated
-  using (auth.uid() = user_id);
+  using ((select auth.uid()) = user_id);
 
 drop policy if exists "Usuários podem criar compartilhamentos" on public.shares;
 create policy "Usuários podem criar compartilhamentos"
   on public.shares for insert to authenticated
   with check (
-    auth.uid() = user_id
+    (select auth.uid()) = user_id
     and public.has_active_plan()
-    and (tab_id is null or exists (select 1 from public.tabs t where t.id = tab_id and t.user_id = auth.uid()))
+    and (tab_id is null or exists (select 1 from public.tabs t where t.id = tab_id and t.user_id = (select auth.uid())))
   );
 
 drop policy if exists "Usuários podem atualizar seus compartilhamentos" on public.shares;
-create policy "Usuários podem atualizar seus compartilhamentos"
-  on public.shares for update to authenticated
-  using (auth.uid() = user_id)
-  with check (
-    auth.uid() = user_id
-    and (tab_id is null or exists (select 1 from public.tabs t where t.id = tab_id and t.user_id = auth.uid()))
-  );
 
 drop policy if exists "Usuários podem excluir seus compartilhamentos" on public.shares;
 create policy "Usuários podem excluir seus compartilhamentos"
   on public.shares for delete to authenticated
-  using (auth.uid() = user_id);
+  using ((select auth.uid()) = user_id);
 
 -- ==============================================================================
 -- ÍNDICES
@@ -459,5 +477,7 @@ create index if not exists idx_offers_tab_id on public.offers(tab_id);
 create index if not exists idx_offers_user_created on public.offers(user_id, created_at desc);
 create index if not exists idx_tabs_user_id on public.tabs(user_id);
 create index if not exists idx_shares_token on public.shares(share_token);
+create index if not exists idx_shares_user_id on public.shares(user_id);
+create index if not exists idx_shares_tab_id on public.shares(tab_id);
 
 notify pgrst, 'reload schema';

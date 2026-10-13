@@ -2,34 +2,36 @@ import React, { useState } from 'react';
 import { extractPageIdFromUrl, NICHE_OPTIONS, STATUS_CONFIG, getFbAvatarUrl } from '../utils/metaParser';
 import { classifyStatus, STAGE_DAYS } from '../utils/offerMeta';
 import useLockBodyScroll from '../utils/useLockBodyScroll';
+import { safeImageSrc } from '../utils/url';
 
 // Valor especial do seletor: deixa o estágio ser recalculado pelo tempo.
 const AUTO_STATUS = 'auto';
 
 const EMPTY_OFFER = {
   name: '',
+  page_name: '',
   library_url: '',
   destination_url: '',
-  niche: 'Saúde & Beleza',
-  custom_niche: '',
+  niche: '',
   status: AUTO_STATUS,
   notes: '',
   initial_results: '1',
   running_days: '1'
 };
 
-export default function OfferModal({ offer, onClose, onSave }) {
+export default function OfferModal({ offer, onClose, onSave, nicheSuggestions = [] }) {
   useLockBodyScroll();
-  const isExistingCustom = offer?.niche && !NICHE_OPTIONS.includes(offer.niche);
+  // Categorias para sugerir: as padrão + as que a pessoa já criou.
+  const niches = Array.from(new Set([...NICHE_OPTIONS, ...nicheSuggestions].filter(Boolean)));
 
   const [formData, setFormData] = useState(
     offer
       ? {
           name: offer.name || '',
+          page_name: offer.meta?.page_name || '',
           library_url: offer.library_url || '',
           destination_url: offer.destination_url || offer.landing_page || '',
-          niche: isExistingCustom ? 'Outros (Personalizado)' : (offer.niche || 'Saúde & Beleza'),
-          custom_niche: isExistingCustom ? offer.niche : '',
+          niche: offer.niche || '',
           status: offer.meta?.status_manual ? offer.status : AUTO_STATUS,
           notes: offer.notes || offer.funnel_notes || '',
           initial_results: String(offer.ads_count ?? 1),
@@ -48,7 +50,7 @@ export default function OfferModal({ offer, onClose, onSave }) {
   const [previewAvatar, setPreviewAvatar] = useState(
     // A foto já gravada é a real; o Graph é palpite e devolve silhueta em
     // parte das páginas — era a bolinha vazia que aparecia aqui.
-    () => offer?.avatar_url || (paginaId ? getFbAvatarUrl(paginaId) : null)
+    () => safeImageSrc(offer?.avatar_url) || (paginaId ? getFbAvatarUrl(paginaId) : null)
   );
   const [avatarFalhou, setAvatarFalhou] = useState(false);
 
@@ -68,14 +70,12 @@ export default function OfferModal({ offer, onClose, onSave }) {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!formData.name.trim() || !formData.library_url.trim()) {
-      setError('Preencha o nome da oferta e a URL da biblioteca.');
+      setError('Preencha o nome do produto e a URL da biblioteca.');
       return;
     }
 
-    const finalNiche =
-      formData.niche === 'Outros (Personalizado)'
-        ? (formData.custom_niche.trim() || 'Outros')
-        : formData.niche;
+    // Categoria escrita à mão vale igual às da lista.
+    const finalNiche = formData.niche.trim().replace(/\s+/g, ' ').slice(0, 80) || 'Outros';
 
     // O ID já gravado (vindo da extensão) vale mais do que o palpite genérico
     // da URL — só o substituímos quando a URL revela um ID de página real.
@@ -105,7 +105,9 @@ export default function OfferModal({ offer, onClose, onSave }) {
         funnel_notes: formData.notes,
         page_id: pageId,
         ads_count: adsCount,
-        running_days: runningDays
+        running_days: runningDays,
+        // Vazio apaga do bloco de metadados.
+        meta: { page_name: formData.page_name.trim().slice(0, 200) || null }
       });
       onClose();
     } catch (err) {
@@ -148,14 +150,24 @@ export default function OfferModal({ offer, onClose, onSave }) {
         )}
 
         <div className="form-grid">
-          <label className="field full">
-            <span>Nome da Oferta / Produto</span>
+          <label className="field">
+            <span>Nome do produto</span>
             <input
               type="text"
               required
               value={formData.name}
-              placeholder="Ex: VSL Sérum Clareador Black"
+              placeholder="Ex: Receitas Italianas"
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            />
+          </label>
+
+          <label className="field">
+            <span>Página do Facebook (quem anuncia)</span>
+            <input
+              type="text"
+              value={formData.page_name}
+              placeholder="Ex: Fernanda Rocha"
+              onChange={(e) => setFormData({ ...formData, page_name: e.target.value })}
             />
           </label>
 
@@ -171,17 +183,20 @@ export default function OfferModal({ offer, onClose, onSave }) {
           </label>
 
           <label className="field">
-            <span>Nicho / Categoria</span>
-            <select
+            <span>Categoria</span>
+            <input
+              type="text"
+              list="minerai-niche-options"
               value={formData.niche}
+              maxLength={80}
+              placeholder="Escolha da lista ou escreva a sua"
               onChange={(e) => setFormData({ ...formData, niche: e.target.value })}
-            >
-              {NICHE_OPTIONS.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
+            />
+            <datalist id="minerai-niche-options">
+              {niches.map((n) => (
+                <option key={n} value={n} />
               ))}
-            </select>
+            </datalist>
           </label>
 
           <label className="field">
@@ -199,18 +214,6 @@ export default function OfferModal({ offer, onClose, onSave }) {
             </select>
           </label>
 
-          {formData.niche === 'Outros (Personalizado)' && (
-            <label className="field full">
-              <span>Digite o Nome do Nicho Personalizado</span>
-              <input
-                type="text"
-                required
-                placeholder="Ex: Criptomoedas, Tarot, Artesanato, Gamer..."
-                value={formData.custom_niche}
-                onChange={(e) => setFormData({ ...formData, custom_niche: e.target.value })}
-              />
-            </label>
-          )}
 
           <label className="field">
             <span>Anúncios Ativos (Contagem Atual)</span>
@@ -241,7 +244,7 @@ export default function OfferModal({ offer, onClose, onSave }) {
           </label>
 
           <label className="field full">
-            <span>Link da Página de Vendas / Checkout (Opcional)</span>
+            <span>Link da página de vendas (opcional)</span>
             <input
               type="url"
               value={formData.destination_url}

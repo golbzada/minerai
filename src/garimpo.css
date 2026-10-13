@@ -1,0 +1,507 @@
+/* ==============================================================================
+   MINERAÍ - CABEÇALHO DO GARIMPO: NÚMEROS, TABS, AÇÕES, FILTROS E RESULTADO
+   Sem emoji: ícones de linha da mesma família do menu lateral.
+   ============================================================================== */
+
+/* ---------- Números da tab ---------- */
+.gstats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 22px;
+}
+
+/* Inteligência: os 5 status lado a lado, quebrando sozinhos quando falta espaço. */
+.gstats.five {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.gstat {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border-default);
+  border-radius: 16px;
+  background: var(--bg-card);
+}
+
+.gstat-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--bg-card-alt);
+  color: var(--gold-dark);
+  flex-shrink: 0;
+}
+
+.gstat-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.gstat-label {
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.gstat-value {
+  color: var(--text-primary);
+  font-size: 1.45rem;
+  font-weight: 900;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.gstat-sub {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Tabs + ações ---------- */
+.gtabs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.gtabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.gtab {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 4px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--bg-card);
+}
+
+.gtab:not(:has(.gtab-tool)) {
+  padding-right: 0;
+}
+
+.gtab.active {
+  border-color: var(--button-dark-bg);
+  background: var(--button-dark-bg);
+}
+
+.gtab-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.gtab.active .gtab-main {
+  color: var(--button-dark-text);
+}
+
+.gtab-name {
+  max-width: 180px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.gtab-count {
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg-card-alt);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.gtab.active .gtab-count {
+  background: var(--gold-shine-icon);
+  color: var(--accent-text);
+}
+
+.gtab-tool {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(253, 248, 237, 0.65);
+  cursor: pointer;
+}
+
+.gtab-tool:hover {
+  background: rgba(253, 248, 237, 0.12);
+  color: var(--button-dark-text);
+}
+
+.gtab-edit input {
+  min-height: 36px;
+  width: 180px;
+  padding: 0 14px;
+  border: 1px solid var(--gold-solid);
+  border-radius: 999px;
+  background: var(--bg-card);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.gtab-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px dashed var(--border-default);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.gtab-new:hover {
+  border-color: var(--gold-solid);
+  color: var(--text-primary);
+}
+
+.gactions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto; /* quando as tabs quebram de linha, as ações continuam à direita */
+}
+
+.gbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.84rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.gbtn:hover:not(:disabled),
+.gbtn.active {
+  border-color: var(--gold-solid);
+}
+
+.gbtn-caret {
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+}
+
+.gbtn.active .gbtn-caret {
+  transform: rotate(-90deg);
+}
+
+.gbtn.gold {
+  border-color: transparent;
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  box-shadow: 0 6px 16px rgba(196, 146, 44, 0.25);
+}
+
+.gbtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.gmenu {
+  position: relative;
+}
+
+.gmenu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 240px;
+  padding: 6px;
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow);
+}
+
+.gmenu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gmenu-item .icon {
+  color: var(--text-secondary);
+}
+
+.gmenu-item:hover:not(:disabled) {
+  background: var(--bg-card-alt);
+}
+
+.gmenu-item:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.gmenu-sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--border-default);
+}
+
+/* ---------- Busca e filtros ---------- */
+.gfilters {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(140px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 16px;
+  background: var(--bg-card);
+}
+
+.gsearch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--bg-card-alt);
+  color: var(--text-secondary);
+}
+
+.gsearch:focus-within {
+  box-shadow: 0 0 0 2px var(--gold-solid);
+}
+
+.gsearch input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.86rem;
+  outline: none;
+}
+
+.gfilters select {
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background-color: var(--bg-card-alt);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gfilters select:focus {
+  border-color: var(--gold-solid);
+  outline: none;
+}
+
+/* ---------- Barra de resultado ---------- */
+.gresults {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.gview {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--border-default);
+  border-radius: 11px;
+  background: var(--bg-card);
+}
+
+.gview button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.gview button.active {
+  background: var(--button-dark-bg);
+  color: var(--button-dark-text);
+}
+
+.gchip,
+.gchip-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 11px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.gchip:hover,
+.gchip-select:hover {
+  border-color: var(--gold-solid);
+  color: var(--text-primary);
+}
+
+.gchip.active {
+  border-color: var(--gold-solid);
+  background: var(--gold-shine-soft);
+  color: var(--text-primary);
+}
+
+.gcount {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+/* ---------- Telas menores ---------- */
+@media (max-width: 1100px) {
+  .gstats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .gfilters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .gsearch {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 600px) {
+  .gstat {
+    padding: 12px;
+  }
+  .gstat-icon {
+    display: none;
+  }
+  /* No celular as tabs ficam numa linha só, rolando para o lado. */
+  .gtabs {
+    flex-wrap: nowrap;
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+  .gtab,
+  .gtab-new {
+    flex-shrink: 0;
+  }
+  .gstat-value {
+    font-size: 1.2rem;
+  }
+  .gactions {
+    width: 100%;
+  }
+  .gactions .gbtn.gold {
+    flex: 1;
+    justify-content: center;
+  }
+  .gcount {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
+/* ---------- Página do Facebook embaixo do nome do produto ---------- */
+.card-page-name {
+  margin: -2px 0 6px;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.offer-page-name {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+}
+
+.offer-page-name strong {
+  color: var(--text-primary);
+}

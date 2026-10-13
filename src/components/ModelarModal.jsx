@@ -22,13 +22,16 @@ export default function ModelarModal({ onClose, urlInicial = '' }) {
     let vivo = true;
 
     function aoResponder(e) {
-      if (e.source === window && e.data?.type === 'MINERAI_PONG' && vivo) {
+      // Só mensagens desta própria janela e desta origem (o bridge da extensão
+      // responde com a origem do painel): nada vindo de iframe ou de outro site.
+      if (e.origin !== window.location.origin || e.source !== window) return;
+      if (e.data?.type === 'MINERAI_PONG' && vivo) {
         setTemExtensao(true);
       }
     }
 
     window.addEventListener('message', aoResponder);
-    window.postMessage({ type: 'MINERAI_PING' }, '*');
+    window.postMessage({ type: 'MINERAI_PING' }, window.location.origin);
 
     const prazo = setTimeout(() => {
       if (vivo) setTemExtensao((atual) => (atual === null ? false : atual));
@@ -44,7 +47,7 @@ export default function ModelarModal({ onClose, urlInicial = '' }) {
   // Resposta da captura.
   useEffect(() => {
     function aoResultado(e) {
-      if (e.source !== window) return;
+      if (e.origin !== window.location.origin || e.source !== window) return;
       const d = e.data;
       if (!d || d.type !== 'MINERAI_MODELAR_RESULTADO') return;
       if (pedidoRef.current && d.id !== pedidoRef.current) return;
@@ -105,7 +108,7 @@ export default function ModelarModal({ onClose, urlInicial = '' }) {
 
     const id = `modelar_${Date.now()}`;
     pedidoRef.current = id;
-    window.postMessage({ type: 'MINERAI_MODELAR', id, url: alvo.href }, '*');
+    window.postMessage({ type: 'MINERAI_MODELAR', id, url: alvo.href }, window.location.origin);
   }
 
   return (
