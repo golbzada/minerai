@@ -224,7 +224,7 @@ export function upsertHistory(history, date, count, kind) {
 
 /**
  * Faixas de tempo que definem o estágio da oferta.
- * Precisa ficar igual ao STAGE_DAYS de extension/content.js.
+ * Precisa ficar igual ao STAGE_DAYS de extension/rastreio-regras.js.
  *
  * O "N anúncios usam este criativo" do card NÃO entra aqui: ele não é o total
  * de anúncios ativos da oferta. O que entra é o total do ANUNCIANTE, lido na
@@ -238,10 +238,11 @@ export const STAGE_DAYS = {
 
 /**
  * Exceção pela quantidade de anúncios ativos do anunciante: com tempo E
- * volume, a oferta já conta como Escalando antes dos 30 dias. Só sobe a
- * etiqueta, nunca rebaixa. Muitos anúncios em poucos dias pode ser só teste,
- * por isso toda regra exige um mínimo de dias.
- * Precisa ficar igual ao STAGE_BY_ADS de extension/content.js.
+ * volume, a oferta já conta como Escalando antes dos 30 dias. A regra de
+ * anúncios só sobe a etiqueta em relação ao tempo; como o total é medido todo
+ * dia, a etiqueta pode voltar a cair se os anúncios caírem. Muitos anúncios em
+ * poucos dias pode ser só teste, por isso toda regra exige um mínimo de dias.
+ * Precisa ficar igual ao STAGE_BY_ADS de extension/rastreio-regras.js.
  */
 export const STAGE_BY_ADS = [
   { days: 15, ads: 10 }, // 15+ dias e 10+ anúncios -> Escalando

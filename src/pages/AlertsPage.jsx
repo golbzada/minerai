@@ -85,7 +85,7 @@ export default function AlertsPage() {
           <p className="page-sub">
             {rastreioHora
               ? `Ofertas atualizadas automaticamente hoje às ${rastreioHora}. `
-              : 'A extensão Mineraí mede suas ofertas sozinha uma vez por dia, com o Chrome aberto. '}
+              : <>A extensão Mineraí mede suas ofertas sozinha uma vez por dia, com o Chrome aberto (<button type="button" className="btn-link" onClick={() => navigate('/extensao')}>instalar ou atualizar a extensão</button>). </>}
             Ajuste os limites abaixo do jeito que você trabalha.
           </p>
         </div>

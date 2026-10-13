@@ -20,7 +20,7 @@ morreu. Não abre nenhuma aba.
 2. Na linha **Rastreio diário**, clique em **Rodar agora**.
 3. O texto muda para "Medindo: 3 de 109" e vai subindo. Com cerca de 100
    ofertas leva uns 5 a 7 minutos. Pode fechar o popup: ele continua por trás.
-4. No fim aparece "Hoje às 09:12 · 109 ofertas". Se alguma escalou ou morreu,
+4. No fim aparece "Hoje às 09:12 · 109 ofertas medidas". Se alguma escalou ou morreu,
    aparece também uma notificação no canto da tela.
 
 ## 3. Conferir no painel

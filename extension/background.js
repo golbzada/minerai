@@ -314,6 +314,20 @@ function encodeNotes(notes, meta) {
   return clean ? `${clean}\n\n${block}` : block;
 }
 
+/**
+ * Anotações + bloco de metadados cabendo em `max` caracteres. Corta as
+ * anotações, nunca o bloco: cortar o bloco apagava favorito, data de início,
+ * etapa da esteira e tudo mais que vive nele.
+ */
+function notasComMeta(notes, meta, max = 10000) {
+  const completo = encodeNotes(notes, meta);
+  if (completo.length <= max) return completo;
+  const soBloco = encodeNotes('', meta);
+  const espaco = Math.max(0, max - soBloco.length - 2);
+  const texto = decodeNotes(notes).notes.slice(0, espaco).trim();
+  return texto ? encodeNotes(texto, meta) : soBloco;
+}
+
 function todayIso() {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0];
@@ -661,7 +675,7 @@ async function updateExistingOffer(existing, offerData, token) {
 
   const patch = {
     ...medicaoDaMineracao(existing.history, offerData, today),
-    funnel_notes: clip(encodeNotes(userNotes, buildMeta(offerData, existing)), 10000),
+    funnel_notes: notasComMeta(userNotes, buildMeta(offerData, existing)),
     updated_at: new Date().toISOString()
   };
 
@@ -752,7 +766,7 @@ async function saveCapturedOffer(rawOfferData) {
     library_url: offerData.libraryUrl,
     landing_page: offerData.landingPage,
     affiliate_link: '',
-    funnel_notes: clip(encodeNotes(offerData.notes, meta), 10000),
+    funnel_notes: notasComMeta(offerData.notes, meta),
     status: offerData.status,
     niche: offerData.niche || 'Outros',
     avatar_url: await resolveAvatar(offerData),

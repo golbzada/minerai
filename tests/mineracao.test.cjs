@@ -50,3 +50,12 @@ test('com total do anunciante, a mineração vira medição do dia', () => {
 test('sem total do anunciante, a mineração não mexe no histórico', () => {
   assert.deepEqual(plain(bg.medicaoDaMineracao([{ date: '2026-10-01', count: 3 }], { pageActiveAds: 0 }, '2026-10-13')), {});
 });
+
+test('anotações enormes não cortam os dados escondidos da oferta', () => {
+  const meta = { start_date: '2026-09-01', library_id: '123456789', fav: true, page_id_real: '999999999' };
+  const texto = bg.notasComMeta('x'.repeat(9990), meta, 10000);
+  assert.ok(texto.length <= 10000);
+  const lido = plain(bg.decodeNotes(texto).meta);
+  assert.equal(lido.fav, true);
+  assert.equal(lido.page_id_real, '999999999');
+});

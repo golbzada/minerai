@@ -54,9 +54,10 @@ async function buscarBiblioteca(query) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), RASTREIO_TIMEOUT_MS);
   try {
-    // Leitura anônima: a Biblioteca é pública e assim nada fica ligado à
-    // conta do Facebook da pessoa.
-    const res = await fetch(`${META_LIBRARY}?${query}`, { credentials: 'omit', signal: controller.signal });
+    // Com os cookies normais do navegador (os mesmos de quando a pessoa abre a
+    // Biblioteca). Sem eles a Meta responde um desafio anti-robô em vez dos
+    // dados — e esse desafio a extensão não tenta burlar: para a rodada.
+    const res = await fetch(`${META_LIBRARY}?${query}`, { credentials: 'include', signal: controller.signal });
     return res.ok ? await res.text() : null;
   } catch (e) {
     return null;
@@ -172,7 +173,7 @@ async function gravarMedicao(linha, leitura, hoje, token) {
   const patch = {
     history: R.upsertHistory(linha.history, hoje, leitura.total, R.KIND),
     ads_count: leitura.total,
-    funnel_notes: clip(encodeNotes(notes, novaMeta), 10000),
+    funnel_notes: notasComMeta(notes, novaMeta),
     updated_at: new Date().toISOString()
   };
 
@@ -196,7 +197,7 @@ async function marcarTentativa(id, hoje, token) {
   await writeOffer(
     `${SUPABASE_URL}/rest/v1/offers?id=eq.${safeUuid(linha.id)}`,
     'PATCH',
-    { funnel_notes: clip(encodeNotes(notes, { ...meta, track_tentativa: hoje }), 10000) },
+    { funnel_notes: notasComMeta(notes, { ...meta, track_tentativa: hoje }) },
     token
   );
 }
@@ -266,9 +267,10 @@ async function rastreioTick({ forcar = false, pausa = pausaPadrao } = {}) {
     const forcadoHoje = forcar || estado.forcado === hoje;
     if (estado.ligado === false && !forcadoHoje) return;
 
-    const { user, token } = await getAuthValida();
+    const { user, token: tokenInicial } = await getAuthValida();
+    let token = tokenInicial;
     const userId = safeUuid(user?.id);
-    if (!token || !userId) {
+    if (!tokenInicial || !userId) {
       await salvarEstadoRastreio({ ...estado, parado: 'sem_login' });
       return;
     }
@@ -287,6 +289,7 @@ async function rastreioTick({ forcar = false, pausa = pausaPadrao } = {}) {
           fila,
           total: fila.length,
           feitas: 0,
+          medidas: 0,
           eventos: { escalou: 0, morreu: 0, decaindo: 0 },
           notificado: { escalou: 0, morreu: 0 },
           iniciadoEm: agoraLocal(),
@@ -309,6 +312,10 @@ async function rastreioTick({ forcar = false, pausa = pausaPadrao } = {}) {
     let falhasSeguidas = 0;
 
     while (estado.fila.length && Date.now() - inicio < RASTREIO_LOTE_MS) {
+      // O acesso vale ~1 h e pode vencer no meio do lote: pega o mais novo
+      // (renovado pela extensão ou entregue pelo painel) a cada oferta.
+      const auth = await getAuthValida();
+      if (auth.token) token = auth.token;
       const id = estado.fila[0];
       const linha = await buscarLinhaOferta(id, token);
 
@@ -337,6 +344,7 @@ async function rastreioTick({ forcar = false, pausa = pausaPadrao } = {}) {
             // no painel enquanto a Biblioteca respondia.
             const fresca = (await buscarLinhaOferta(id, token)) || linha;
             const eventos = await gravarMedicao(fresca, leitura, hoje, token);
+            estado.medidas = (estado.medidas || 0) + 1;
             eventos.forEach((e) => {
               if (e.tipo in estado.eventos) estado.eventos[e.tipo] += 1;
             });

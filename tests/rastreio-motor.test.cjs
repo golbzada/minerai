@@ -75,7 +75,7 @@ function ambiente({ ofertas, anuncios = {}, paginas = {}, logado = true, estado 
         if (planoInativo) return resposta('new row violates row-level security policy for table "offers"', 403);
         const id = u.match(/[?&]id=eq\.([0-9a-f-]+)/)[1];
         const corpo = JSON.parse(opcoes.body);
-        patches.push({ id, corpo });
+        patches.push({ id, corpo, auth: (opcoes.headers || {}).Authorization });
         if (aoGravar) aoGravar({ id, corpo, storage });
         const linha = ofertas.find((o) => o.id === id);
         Object.assign(linha, corpo);
@@ -309,9 +309,45 @@ test('Rodar agora com o rastreio desligado termina a rodada nas continuações',
   assert.ok(amb.storage.minerai_rastreio.terminadoEm);
 });
 
-test('leitura da Biblioteca é anônima (sem a conta do Facebook da pessoa)', async () => {
+test('leitura usa os cookies normais do navegador (sem eles a Meta manda desafio)', async () => {
   const amb = ambiente({ ofertas: tresOfertas(), anuncios: anunciosTres, paginas: paginasTres });
   await amb.sw.rastreioTick(semPausa);
   assert.ok(amb.credenciaisMeta.length > 0);
-  assert.ok(amb.credenciaisMeta.every((c) => c === 'omit'));
+  assert.ok(amb.credenciaisMeta.every((c) => c === 'include'));
+});
+
+test('desafio anti-robô da Meta para a rodada (não tenta burlar)', async () => {
+  const desafio = "<script>function executeChallenge(){fetch('/abc?challenge=3',{method:'POST'})}</script>";
+  const anuncios = { ...anunciosTres, '90000100': desafio };
+  const amb = ambiente({ ofertas: tresOfertas(), anuncios, paginas: paginasTres });
+  await amb.sw.rastreioTick(semPausa);
+  assert.equal(amb.storage.minerai_rastreio.parado, 'bloqueio');
+  assert.equal(amb.patches.length, 0);
+  assert.ok(!amb.buscasMeta.some((u) => u.includes('challenge')));
+});
+
+test('o estado separa ofertas medidas das só tentadas', async () => {
+  const boa = tresOfertas()[0];
+  const amb = ambiente({ ofertas: [semId(7), semId(8), semId(9), boa], anuncios: anunciosTres, paginas: paginasTres });
+  await amb.sw.rastreioTick(semPausa);
+  assert.equal(amb.storage.minerai_rastreio.feitas, 4);
+  assert.equal(amb.storage.minerai_rastreio.medidas, 1);
+});
+
+test('acesso renovado no meio da rodada passa a ser usado nas próximas ofertas', async () => {
+  const NOVO = `n.${Buffer.from(JSON.stringify({ exp: 9999999999 })).toString('base64url')}.z`;
+  let trocou = false;
+  const amb = ambiente({
+    ofertas: tresOfertas(),
+    anuncios: anunciosTres,
+    paginas: paginasTres,
+    aoGravar: ({ storage }) => {
+      if (!trocou) {
+        trocou = true;
+        storage.minerai_session = { access_token: NOVO, refresh_token: 'r2', expires_at: 9999999999 };
+      }
+    }
+  });
+  await amb.sw.rastreioTick(semPausa);
+  assert.equal(amb.patches[amb.patches.length - 1].auth, `Bearer ${NOVO}`);
 });

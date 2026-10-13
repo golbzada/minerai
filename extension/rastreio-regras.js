@@ -59,8 +59,14 @@
     const at = texto.indexOf(`"ad_archive_id":"${libraryId}"`);
     if (!libraryId || at < 0) return { pageId: '', ativo: null };
 
-    const depois = texto.slice(at, at + 4000);
-    const antes = texto.slice(Math.max(0, at - 4000), at);
+    // Depois: só até o próximo anúncio. Antes: só desde o anúncio anterior.
+    // Assim nunca se lê o page_id/is_active de um anúncio vizinho.
+    let depois = texto.slice(at, at + 4000);
+    const proximo = depois.indexOf('"ad_archive_id":', 1);
+    if (proximo > 0) depois = depois.slice(0, proximo);
+    let antes = texto.slice(Math.max(0, at - 4000), at);
+    const anterior = antes.lastIndexOf('"ad_archive_id":');
+    if (anterior >= 0) antes = antes.slice(anterior).replace(/^"ad_archive_id":"\d*"/, '').replace(/^[^}]*\}/, '');
 
     let pageId = '';
     const pageDepois = depois.match(/"page_id":"(\d{6,})"/);
@@ -89,9 +95,10 @@
     return m ? parseInt(m[1], 10) : null;
   }
 
-  /** A Meta pediu captcha: hora de parar. */
+  /** A Meta pediu captcha ou mandou o desafio anti-robô: hora de parar. */
   function pareceBloqueio(html) {
-    return /"xfb_ad_library_is_captcha_required":true/.test(String(html || ''));
+    const texto = String(html || '');
+    return /"xfb_ad_library_is_captcha_required":true/.test(texto) || /executeChallenge|[?&]challenge=\d/.test(texto);
   }
 
   // ---------------------------------------------------------------------------
@@ -292,7 +299,8 @@
     if (!e.terminadoEm) return 'Ainda não rodou hoje.';
 
     const hora = String(e.terminadoEm).slice(11, 16);
-    const partes = [`Hoje às ${hora}`, `${e.feitas || 0} ${e.feitas === 1 ? 'oferta' : 'ofertas'}`];
+    const n = e.medidas ?? e.feitas ?? 0;
+    const partes = [`Hoje às ${hora}`, `${n} ${n === 1 ? 'oferta medida' : 'ofertas medidas'}`];
     const ev = e.eventos || {};
     const eventos = [];
     if (ev.escalou) eventos.push(`${ev.escalou} ${ev.escalou === 1 ? 'escalou' : 'escalaram'}`);

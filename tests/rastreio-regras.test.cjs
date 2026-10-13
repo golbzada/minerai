@@ -181,8 +181,8 @@ test('montarFila: medidas há mais tempo entram antes', () => {
 
 test('resumoDoRastreio descreve cada estado em português simples', () => {
   const base = { ligado: true, dia: HOJE, fila: [], total: 109, feitas: 109, eventos: { escalou: 3, morreu: 1 }, terminadoEm: `${HOJE}T09:12`, parado: null };
-  assert.equal(R.resumoDoRastreio(base, false, HOJE), 'Hoje às 09:12 · 109 ofertas · 3 escalaram, 1 morreu');
-  assert.equal(R.resumoDoRastreio({ ...base, eventos: {} }, false, HOJE), 'Hoje às 09:12 · 109 ofertas');
+  assert.equal(R.resumoDoRastreio(base, false, HOJE), 'Hoje às 09:12 · 109 ofertas medidas · 3 escalaram, 1 morreu');
+  assert.equal(R.resumoDoRastreio({ ...base, eventos: {} }, false, HOJE), 'Hoje às 09:12 · 109 ofertas medidas');
   assert.equal(R.resumoDoRastreio({ ...base, fila: ['a'], feitas: 40, terminadoEm: null }, true, HOJE), 'Medindo: 40 de 109');
   assert.equal(R.resumoDoRastreio({ ...base, ligado: false }, false, HOJE), 'Desligado');
   assert.equal(R.resumoDoRastreio({ ...base, parado: 'bloqueio', terminadoEm: null }, false, HOJE), 'A Meta pediu uma pausa. Tenta de novo amanhã.');
@@ -220,4 +220,14 @@ test('estaMedindo não trava o botão depois de pausa ou plano', () => {
   assert.equal(R.estaMedindo({ ...base, parado: 'plano' }, false, HOJE), false);
   assert.equal(R.estaMedindo({ ...base, dia: diasAntes(1) }, false, HOJE), false);
   assert.equal(R.estaMedindo({ ...base, fila: [] }, true, HOJE), true);
+});
+
+test('lerAnuncio não pega o page_id do anúncio vizinho', () => {
+  const html = '"ad_archive_id":"111","page_id":"888888888","is_active":false},{"ad_archive_id":"222","x":1}';
+  assert.deepEqual(R.lerAnuncio(html, '222'), { pageId: '', ativo: null });
+});
+
+test('resumo conta só as ofertas medidas de verdade', () => {
+  const e = { ligado: true, dia: HOJE, fila: [], total: 4, feitas: 4, medidas: 1, eventos: {}, terminadoEm: `${HOJE}T09:12` };
+  assert.equal(R.resumoDoRastreio(e, false, HOJE), 'Hoje às 09:12 · 1 oferta medida');
 });
