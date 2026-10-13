@@ -42,9 +42,10 @@
         "https://mineraiofertas.vercel.app/*"
       ],
       "js": [
+        "sessao-regras.js",
         "bridge.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_start"
     }
   ],
   "permissions": [

@@ -13,6 +13,49 @@
   let syncInterval = null;
   let lastSyncKey = '';
 
+  // O painel espera este sinal antes de ligar o Supabase (ver
+  // src/utils/extensaoSessao.js): assim ele já nasce com a sessão mais nova.
+  const raiz = document.documentElement;
+  if (raiz) raiz.dataset.mineraiSessao = 'aguardando';
+
+  function chaveDaSessao() {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('sb-') && key.endsWith('-auth-token')) return key;
+    }
+    return null;
+  }
+
+  /**
+   * Se a extensão renovou o login enquanto o painel estava fechado (ou parado
+   * numa aba esquecida), a sessão dela é a válida: grava no localStorage do
+   * painel, que o supabase-js lê a cada uso. Sem isso o painel tentaria o
+   * refresh_token antigo e o Supabase deslogaria os dois.
+   */
+  function puxarSessaoDaExtensao(depois) {
+    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id || !self.MineraiSessao) {
+      depois();
+      return;
+    }
+    try {
+      chrome.runtime.sendMessage({ type: 'GET_PANEL_SESSION' }, (resposta) => {
+        try {
+          if (!chrome.runtime?.lastError && resposta && resposta.session) {
+            const key = chaveDaSessao();
+            const painel = key ? JSON.parse(localStorage.getItem(key)) : null;
+            if (self.MineraiSessao.compararSessoes(painel, resposta) === 'extensao') {
+              const nova = self.MineraiSessao.mesclarSessao(painel, resposta.session, Date.now() / 1000);
+              localStorage.setItem(key, JSON.stringify(nova));
+            }
+          }
+        } catch (e) {}
+        depois();
+      });
+    } catch (e) {
+      depois();
+    }
+  }
+
   function safeSendMessage(payload) {
     if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id) {
       if (syncInterval) clearInterval(syncInterval);
@@ -95,7 +138,12 @@
     }
   }
 
-  syncSession();
+  // Primeiro recebe a sessão da extensão (se for mais nova), depois avisa a
+  // extensão do que ficou no painel.
+  puxarSessaoDaExtensao(() => {
+    if (raiz) raiz.dataset.mineraiSessao = 'pronta';
+    syncSession();
+  });
 
   /**
    * Toda mensagem aceita precisa ter sido postada por esta mesma janela, nesta
@@ -169,5 +217,5 @@
   });
 
   // Re-sincronizar periodicamente enquanto o dashboard estiver aberto
-  syncInterval = setInterval(syncSession, 6000);
+  syncInterval = setInterval(() => puxarSessaoDaExtensao(syncSession), 6000);
 })();

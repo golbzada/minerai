@@ -19,6 +19,9 @@ const DASHBOARD_URLS = [
   'http://localhost:5173'
 ];
 
+// Regras da sessão compartilhada com o painel (quem tem a mais nova).
+importScripts('sessao-regras.js');
+
 // ==============================================================================
 // SANEAMENTO DO QUE SAI DO CONTENT SCRIPT
 // ==============================================================================
@@ -980,9 +983,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: false, error: 'Origem não autorizada.' });
       return true;
     }
-    setStoredUser(user, session).then(() => {
-      sendResponse({ success: true });
+    // Se a extensão já renovou e o painel ainda tem a sessão antiga, guardar
+    // a antiga perderia o refresh_token válido. O bridge entrega a nova ao
+    // painel no próximo ciclo.
+    getCurrentUser().then((guardada) => {
+      if (!self.MineraiSessao.aceitarDoPainel(guardada, user, session)) {
+        sendResponse({ success: false, error: 'Sessão mais antiga que a da extensão.' });
+        return;
+      }
+      setStoredUser(user, session).then(() => sendResponse({ success: true }));
     });
+    return true;
+  }
+
+  // O bridge pede a sessão da extensão para entregar ao painel se for mais nova.
+  if (message.type === 'GET_PANEL_SESSION') {
+    if (!vemDoPainel) {
+      sendResponse({ success: false, error: 'Origem não autorizada.' });
+      return true;
+    }
+    getCurrentUser().then(({ user, session }) => sendResponse({ user, session }));
     return true;
   }
 
