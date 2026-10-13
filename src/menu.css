@@ -468,9 +468,9 @@
   align-items: center;
   padding: 2px 8px;
   border-radius: 999px;
-  background: #fef3c7;
-  border: 1px solid #fcd34d;
-  color: #92400e;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  color: var(--warn-text);
   font-size: 0.62rem;
   font-weight: 900;
   cursor: help;
@@ -490,10 +490,10 @@
   letter-spacing: 0.04em;
 }
 
-.stage-badge.stage-rodando { background: #e3fcef; border-color: #abf5d1; color: #00875a; }
-.stage-badge.stage-modelando { background: var(--gold-shine-soft); border-color: var(--gold-light); color: var(--gold-dark); }
-.stage-badge.stage-analisando { background: #deebff; border-color: #b3d4ff; color: #0052cc; }
-.stage-badge.stage-descartada { background: #f3f4f6; border-color: #e5e7eb; color: #6b7280; }
+.stage-badge.stage-rodando { background: var(--st-scaling-bg); border-color: var(--st-scaling-bd); color: var(--st-scaling-fg); }
+.stage-badge.stage-modelando { background: var(--gold-shine-soft); border-color: var(--gold-light); color: var(--gold-text); }
+.stage-badge.stage-analisando { background: var(--st-testing-bg); border-color: var(--st-testing-bd); color: var(--st-testing-fg); }
+.stage-badge.stage-descartada { background: var(--neutral-bg); border-color: var(--neutral-bd); color: var(--neutral-tx); }
 
 /* ---------- Barra do Garimpo (visões e filtros extras) ---------- */
 .garimpo-bar {
@@ -725,10 +725,10 @@
   color: var(--text-secondary);
 }
 
-.kcol-rodando .kcol-head { color: #00875a; }
-.kcol-modelando .kcol-head { color: var(--gold-dark); }
-.kcol-analisando .kcol-head { color: #0052cc; }
-.kcol-descartada .kcol-head { color: #6b7280; }
+.kcol-rodando .kcol-head { color: var(--st-scaling-tx); }
+.kcol-modelando .kcol-head { color: var(--gold-text); }
+.kcol-analisando .kcol-head { color: var(--st-testing-tx); }
+.kcol-descartada .kcol-head { color: var(--neutral-tx); }
 
 .kcol-count {
   min-width: 22px;
@@ -1256,8 +1256,8 @@
   color: var(--text-secondary);
 }
 
-.status-chip.pronto { background: #e3fcef; border-color: #abf5d1; color: #00875a; }
-.status-chip.falhou { background: #fdf2f0; border-color: #f5c6cb; color: var(--danger); }
+.status-chip.pronto { background: var(--st-scaling-bg); border-color: var(--st-scaling-bd); color: var(--st-scaling-fg); }
+.status-chip.falhou { background: var(--danger-bg); border-color: var(--danger-border); color: var(--danger); }
 .status-chip.capturando { background: var(--gold-shine-soft); border-color: var(--gold-light); color: var(--gold-dark); }
 
 .modelagem-url {

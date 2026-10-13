@@ -59,7 +59,7 @@ export default function StageBadge({ offer, variant = 'badge' }) {
       <span
         ref={ref}
         className="fcard-status"
-        style={{ color: cfg.color === '#ffffff' ? cfg.bg : cfg.color }}
+        style={{ color: cfg.text }}
         {...handlers}
       >
         {statusText(cfg)}

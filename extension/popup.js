@@ -46,19 +46,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const onlineEl = document.getElementById('status-online');
   const offlineEl = document.getElementById('status-offline');
   const nameEl = document.getElementById('user-display-name');
-  const emailEl = document.getElementById('user-display-email');
   const btnOpenDash = document.getElementById('btn-open-dash');
   const btnOpenMeta = document.getElementById('btn-open-meta');
-  const avatarEl = document.getElementById('user-avatar');
 
   // 1. Checar status do usuário
   // Desconectado, o botão principal vira "Conectar conta" — antes ele dizia
   // só "Abrir Painel" e não ficava claro que era ali que se entrava.
   function pintarEstado(conectado) {
     loadingEl.style.display = 'none';
+    document.getElementById('user-status-card').dataset.estado = conectado ? 'on' : 'off';
     onlineEl.style.display = conectado ? 'flex' : 'none';
     offlineEl.style.display = conectado ? 'none' : 'flex';
-    btnOpenDash.innerHTML = conectado ? rotulo('painel', 'Abrir painel Mineraí') : rotulo('entrar', 'Conectar conta');
+    btnOpenDash.innerHTML = conectado ? rotulo('painel', 'Abrir painel') : rotulo('entrar', 'Conectar conta');
   }
 
   function conferirLogin() {
@@ -69,10 +68,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const user = response.user;
         const nome = user.name || user.email?.split('@')[0] || 'Minerador';
         nameEl.textContent = nome;
-        emailEl.textContent = user.email || '';
-        // Iniciais do nome no lugar do bonequinho.
-        const partes = nome.trim().split(/\s+/).filter(Boolean);
-        avatarEl.textContent = ((partes[0]?.[0] || 'M') + (partes.length > 1 ? partes[partes.length - 1][0] : '')).toUpperCase();
+        // O e-mail fica no passar do mouse: na tela, só o nome.
+        onlineEl.title = user.email || '';
       }
       pintarEstado(conectado);
     });

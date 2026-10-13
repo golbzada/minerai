@@ -305,7 +305,8 @@
 /* ---------- Busca e filtros ---------- */
 .gfilters {
   display: grid;
-  grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(140px, 1fr));
+  /* Status ganha mais espaço: divide a coluna com o botão "?" da legenda. */
+  grid-template-columns: minmax(200px, 1.7fr) minmax(176px, 1.2fr) repeat(3, minmax(136px, 1fr));
   gap: 8px;
   margin-bottom: 12px;
   padding: 8px;

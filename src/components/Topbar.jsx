@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Brand from './Brand';
 import ProfileModal from './ProfileModal';
+import Icon from './Icons';
+import { useTheme } from '../utils/theme';
 import { getAccess } from '../utils/plan';
 
 export default function Topbar({ user, onLogout, onExport, onUpdateUser, onOpenExtension }) {
@@ -11,6 +13,8 @@ export default function Topbar({ user, onLogout, onExport, onUpdateUser, onOpenE
   const firstName = user?.name ? user.name.split(' ')[0] : 'Usuário';
   const initial = user?.name ? user.name[0].toUpperCase() : 'U';
   const access = getAccess(user);
+  const { theme, toggle: toggleTheme } = useTheme();
+  const isDark = theme === 'escuro';
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -29,6 +33,17 @@ export default function Topbar({ user, onLogout, onExport, onUpdateUser, onOpenE
     <>
       <header className="topbar">
         <Brand />
+
+        <div className="topbar-right">
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={toggleTheme}
+          title={isDark ? 'Mudar para o tema claro' : 'Mudar para o tema escuro'}
+          aria-label={isDark ? 'Mudar para o tema claro' : 'Mudar para o tema escuro'}
+        >
+          <Icon name={isDark ? 'sol' : 'lua'} size={17} strokeWidth={2} />
+        </button>
 
         <div className="user-menu-wrapper" ref={menuRef}>
           <div
@@ -114,6 +129,7 @@ export default function Topbar({ user, onLogout, onExport, onUpdateUser, onOpenE
               </button>
             </div>
           )}
+        </div>
         </div>
       </header>
 

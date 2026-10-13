@@ -112,8 +112,8 @@ export default function ProfileModal({ user, onClose, onUpdateUser }) {
               className="status-badge"
               style={
                 access.active
-                  ? { color: '#00875a', background: '#e3fcef', borderColor: '#abf5d1' }
-                  : { color: '#b42318', background: '#fdf2f0', borderColor: '#f5c6cb' }
+                  ? { color: 'var(--st-scaling-fg)', background: 'var(--st-scaling-bg)', borderColor: 'var(--st-scaling-bd)' }
+                  : { color: 'var(--danger-text)', background: 'var(--danger-bg)', borderColor: 'var(--danger-border)' }
               }
             >
               {access.active ? 'Ativo' : 'Inativo'}

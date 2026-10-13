@@ -49,12 +49,11 @@ svg {
   gap: 12px;
 }
 
-/* ---------- Marca (igual ao menu lateral) ---------- */
+/* ---------- Marca (igual ao menu lateral, em tamanho de popup) ---------- */
 .popup-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 44px;
 }
 
 .brand-logo {
@@ -66,24 +65,36 @@ svg {
 .brand-mark {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 13px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
   background: var(--ouro-brilho);
-  box-shadow: 0 8px 20px rgba(232, 184, 75, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  box-shadow: 0 6px 16px rgba(232, 184, 75, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.5);
   color: var(--preto);
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 900;
   line-height: 1;
 }
 
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
 .brand-wordmark {
   color: var(--texto-forte);
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1;
   white-space: nowrap;
+}
+
+.brand-text small {
+  color: var(--texto-fraco);
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .brand-i {
@@ -94,145 +105,90 @@ svg {
 }
 
 .version-pill {
-  padding: 4px 9px;
+  padding: 3px 8px;
   border: 1px solid var(--linha);
   border-radius: 999px;
-  color: var(--texto);
+  color: var(--texto-fraco);
   font-size: 10px;
   font-weight: 800;
 }
 
-/* ---------- Quem está conectado ---------- */
-.status-card {
-  padding: 12px;
+/* ---------- Quem está conectado: uma faixa, igual à do painel na Biblioteca ---------- */
+.auth-strip {
+  padding: 9px 11px;
   border: 1px solid var(--linha);
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--cartao);
+  font-size: 11.5px;
+  font-weight: 700;
 }
 
-.status-loading {
+.auth-strip[data-estado="on"] {
+  border-color: rgba(74, 222, 128, 0.22);
+  background: rgba(74, 222, 128, 0.07);
+}
+
+.auth-strip[data-estado="off"] {
+  border-color: rgba(248, 113, 113, 0.25);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.auth-line {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
-  font-weight: 600;
+  min-width: 0;
+}
+
+.auth-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.user-name {
+  color: var(--texto-forte);
+  font-weight: 800;
+}
+
+.auth-line .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.auth-line.online .dot {
+  background: #10B981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+}
+
+.auth-line.offline {
+  color: #FCA5A5;
+}
+
+.auth-line.offline .dot {
+  background: #EF4444;
 }
 
 .spinner {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border: 2px solid var(--linha);
   border-top-color: var(--ouro);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
+  flex-shrink: 0;
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
-.status-online {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.user-avatar {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  background: var(--ouro-brilho);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
-  color: var(--preto);
-  font-size: 13px;
-  font-weight: 900;
-  letter-spacing: 0.02em;
-  flex-shrink: 0;
-}
-
-.user-details {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.user-name {
-  overflow: hidden;
-  color: var(--texto-forte);
-  font-size: 13.5px;
-  font-weight: 800;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.user-email {
-  overflow: hidden;
-  color: var(--texto-fraco);
-  font-size: 11px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  font-size: 9.5px;
-  font-weight: 800;
-  flex-shrink: 0;
-}
-
-.status-pill.on {
-  background: rgba(74, 222, 128, 0.12);
-  color: #86EFAC;
-}
-
-.status-pill .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.status-offline {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.offline-icon {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  background: rgba(248, 113, 113, 0.12);
-  color: #FCA5A5;
-  flex-shrink: 0;
-}
-
-.offline-details strong {
-  display: block;
-  margin-bottom: 2px;
-  color: #FCA5A5;
-  font-size: 12.5px;
-}
-
-.offline-details p {
-  font-size: 11px;
-  line-height: 1.35;
-}
-
 /* ---------- Botões ---------- */
-.actions-group {
-  display: flex;
-  flex-direction: column;
+.actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
 
@@ -241,38 +197,38 @@ svg {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 7px;
   width: 100%;
+  height: 40px;
   border-radius: 12px;
   font-family: inherit;
+  font-size: 12.5px;
   font-weight: 800;
+  white-space: nowrap;
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
 .btn-primary {
-  height: 42px;
   border: 0;
   background: var(--ouro-botao);
-  box-shadow: 0 6px 16px rgba(232, 184, 75, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  box-shadow: 0 6px 16px rgba(232, 184, 75, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.45);
   color: var(--preto);
-  font-size: 13px;
 }
 
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 8px 20px rgba(232, 184, 75, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  box-shadow: 0 8px 20px rgba(232, 184, 75, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
 .btn-secondary {
-  height: 38px;
   border: 1px solid var(--linha);
-  background: transparent;
+  background: var(--cartao);
   color: var(--texto-forte);
-  font-size: 12px;
 }
 
 .btn-secondary:hover {
+  border-color: rgba(232, 184, 75, 0.35);
   background: var(--hover);
 }
 
@@ -280,72 +236,21 @@ svg {
   display: inline-flex;
 }
 
-/* Linha "Biblioteca de Anúncios": ícone, texto em duas linhas e seta */
-.btn-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--linha);
-  border-radius: 14px;
-  background: var(--cartao);
-  color: var(--texto-forte);
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.btn-row:hover {
-  border-color: rgba(232, 184, 75, 0.35);
-  background: var(--hover);
-}
-
-.row-ico,
-.modelar-ico {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  background: var(--ouro-tinta);
+.btn-secondary .btn-ico {
   color: var(--ouro);
-  flex-shrink: 0;
 }
 
-.row-text {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.row-text strong {
-  font-size: 12.5px;
-  font-weight: 800;
-}
-
-.row-text small {
+.btn-ext {
+  display: inline-flex;
   color: var(--texto-fraco);
-  font-size: 10.5px;
-}
-
-.row-arrow {
-  color: var(--texto-fraco);
-}
-
-.btn-row:hover .row-arrow {
-  color: var(--texto-forte);
 }
 
 /* ---------- Modelar página ---------- */
 .modelar-box {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px 12px 12px;
+  gap: 9px;
+  padding: 12px;
   border: 1px solid var(--linha);
   border-radius: 14px;
   background: var(--cartao);
@@ -353,8 +258,19 @@ svg {
 
 .modelar-titulo {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
+}
+
+.modelar-ico {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: var(--ouro-tinta);
+  color: var(--ouro);
+  flex-shrink: 0;
 }
 
 .modelar-titulo strong {
@@ -366,17 +282,17 @@ svg {
 
 .modelar-titulo small {
   display: block;
-  margin-top: 3px;
+  margin-top: 2px;
   color: var(--texto-fraco);
   font-size: 10.5px;
-  line-height: 1.45;
+  line-height: 1.4;
 }
 
 .modelar-campo {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 40px;
+  height: 38px;
   padding: 0 12px;
   border: 1px solid var(--linha);
   border-radius: 12px;
@@ -409,8 +325,7 @@ svg {
 }
 
 .modelar-btn {
-  height: 40px;
-  font-size: 12.5px;
+  height: 38px;
 }
 
 .modelar-btn:disabled {
@@ -442,14 +357,4 @@ svg {
 .modelar-aviso.erro {
   background: rgba(248, 113, 113, 0.12);
   color: #FCA5A5;
-}
-
-/* ---------- Rodapé ---------- */
-.popup-footer {
-  color: rgba(253, 248, 237, 0.35);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-align: center;
-  text-transform: uppercase;
 }

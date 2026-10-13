@@ -52,42 +52,42 @@ export function getFbAvatarUrl(pageId) {
   return `https://graph.facebook.com/${encodeURIComponent(String(pageId || '4'))}/picture?type=large`;
 }
 
+// As cores vêm de variáveis CSS (src/index.css): cada uma tem a versão do
+// tema claro e a do escuro. `text` é a cor para usar a etiqueta como texto
+// solto (sem o fundo), ex. no card do funil.
+const statusColors = (key) => ({
+  color: `var(--st-${key}-fg)`,
+  bg: `var(--st-${key}-bg)`,
+  border: `var(--st-${key}-bd)`,
+  text: `var(--st-${key}-tx)`
+});
+
 export const STATUS_CONFIG = {
   winner: {
     key: 'winner',
     // Laranja sólido com texto branco: é o selo de maior destaque do painel.
     label: 'Vencedor',
-    color: '#ffffff',
-    bg: '#f97316',
-    border: '#ea580c'
+    ...statusColors('winner')
   },
   scaling: {
     key: 'scaling',
     label: 'Escalando',
-    color: '#00875a',
-    bg: '#e3fcef',
-    border: '#abf5d1'
+    ...statusColors('scaling')
   },
   pre_scaling: {
     key: 'pre_scaling',
     label: 'Pré-escala',
-    color: '#b45309',
-    bg: '#fef3c7',
-    border: '#fcd34d'
+    ...statusColors('pre_scaling')
   },
   testing: {
     key: 'testing',
     label: 'Em teste',
-    color: '#0052cc',
-    bg: '#deebff',
-    border: '#b3d4ff'
+    ...statusColors('testing')
   },
   paused: {
     key: 'paused',
     label: 'Pausado',
-    color: '#6554c0',
-    bg: '#eae6ff',
-    border: '#c0b6f2'
+    ...statusColors('paused')
   }
 };
 

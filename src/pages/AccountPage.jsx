@@ -69,7 +69,7 @@ export default function AccountPage({ onExport }) {
           <p className="eyebrow">Plano atual</p>
           <div className="plan-hero">
             <strong>{access.label}</strong>
-            <span className="status-badge" style={access.active ? { color: '#00875a', background: '#e3fcef', borderColor: '#abf5d1' } : { color: '#b42318', background: '#fdf2f0', borderColor: '#f5c6cb' }}>
+            <span className="status-badge" style={access.active ? { color: 'var(--st-scaling-fg)', background: 'var(--st-scaling-bg)', borderColor: 'var(--st-scaling-bd)' } : { color: 'var(--danger-text)', background: 'var(--danger-bg)', borderColor: 'var(--danger-border)' }}>
               {access.active ? 'Ativo' : 'Inativo'}
             </span>
           </div>

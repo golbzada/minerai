@@ -50,7 +50,7 @@ export default function InsightsPage() {
           const pct = insights.total ? Math.round((count / insights.total) * 100) : 0;
           return (
             <div className="gstat" key={s.key}>
-              <span className="gstat-icon" aria-hidden="true" style={{ color: s.color === '#ffffff' ? s.bg : s.color }}>
+              <span className="gstat-icon" aria-hidden="true" style={{ color: s.text }}>
                 <Icon name={STATUS_ICONS[s.key] || 'acervo'} size={18} />
               </span>
               <div className="gstat-info">
