@@ -7,3 +7,6 @@ public/*.zip
 # Testes automatizados (npm test): fixtures de propósito com <script> e
 # objetos falsos. Não vão para o site nem para a extensão.
 tests/
+
+# Código de terceiros (transformers.js e onnxruntime), copiado sem mudanças.
+extension/vendor/
