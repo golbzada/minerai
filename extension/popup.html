@@ -38,6 +38,20 @@
       </span>
     </section>
 
+    <!-- Rastreio diário: mede as ofertas salvas uma vez por dia, sozinho -->
+    <section class="rastreio" id="rastreio" style="display: none;">
+      <span class="rastreio-ico" data-icon="radar" data-size="14"></span>
+      <div class="rastreio-info">
+        <strong>Rastreio diário</strong>
+        <small id="rastreio-texto">Ainda não rodou hoje.</small>
+      </div>
+      <button class="rastreio-rodar" id="rastreio-rodar" type="button" title="Medir agora as ofertas que faltam hoje">Rodar agora</button>
+      <label class="rastreio-chave" title="Ligar ou desligar o rastreio diário">
+        <input type="checkbox" id="rastreio-ligado" checked />
+        <span aria-hidden="true"></span>
+      </label>
+    </section>
+
     <!-- Ações rápidas, lado a lado -->
     <div class="actions-grid">
       <button class="btn-primary" id="btn-open-dash">
@@ -91,6 +105,7 @@
     </section>
   </div>
 
+  <script src="rastreio-regras.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

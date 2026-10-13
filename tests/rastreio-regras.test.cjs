@@ -178,3 +178,16 @@ test('montarFila: medidas há mais tempo entram antes', () => {
   ];
   assert.deepEqual(R.montarFila(offers, HOJE), ['c', 'b', 'a']);
 });
+
+test('resumoDoRastreio descreve cada estado em português simples', () => {
+  const base = { ligado: true, dia: HOJE, fila: [], total: 109, feitas: 109, eventos: { escalou: 3, morreu: 1 }, terminadoEm: `${HOJE}T09:12`, parado: null };
+  assert.equal(R.resumoDoRastreio(base, false, HOJE), 'Hoje às 09:12 · 109 ofertas · 3 escalaram, 1 morreu');
+  assert.equal(R.resumoDoRastreio({ ...base, eventos: {} }, false, HOJE), 'Hoje às 09:12 · 109 ofertas');
+  assert.equal(R.resumoDoRastreio({ ...base, fila: ['a'], feitas: 40, terminadoEm: null }, true, HOJE), 'Medindo: 40 de 109');
+  assert.equal(R.resumoDoRastreio({ ...base, ligado: false }, false, HOJE), 'Desligado');
+  assert.equal(R.resumoDoRastreio({ ...base, parado: 'bloqueio', terminadoEm: null }, false, HOJE), 'A Meta pediu uma pausa. Tenta de novo amanhã.');
+  assert.equal(R.resumoDoRastreio({ ...base, parado: 'sem_login' }, false, HOJE), 'Conecte a conta para medir.');
+  assert.equal(R.resumoDoRastreio({ ...base, parado: 'plano' }, false, HOJE), 'Plano inativo: rastreio pausado.');
+  assert.equal(R.resumoDoRastreio({ ligado: true }, false, HOJE), 'Ainda não rodou hoje.');
+  assert.equal(R.resumoDoRastreio({ ...base, dia: '2026-10-12' }, false, HOJE), 'Ainda não rodou hoje.');
+});

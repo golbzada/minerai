@@ -16,7 +16,8 @@ const ICON_PATHS = {
   entrar: 'M10 17l5-5-5-5M15 12H3M14 4h6v16h-6',
   relogio: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
   check: 'M5 12l4 4L19 6',
-  refazer: 'M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5'
+  refazer: 'M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5',
+  radar: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12l6-6'
 };
 
 function icon(name, size = 16) {
@@ -55,6 +56,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function pintarEstado(conectado) {
     loadingEl.style.display = 'none';
     document.getElementById('user-status-card').dataset.estado = conectado ? 'on' : 'off';
+    rastreioEl.style.display = conectado ? 'flex' : 'none';
+    if (conectado) conferirRastreio();
     onlineEl.style.display = conectado ? 'flex' : 'none';
     offlineEl.style.display = conectado ? 'none' : 'flex';
     btnOpenDash.innerHTML = conectado ? rotulo('painel', 'Abrir painel') : rotulo('entrar', 'Conectar conta');
@@ -75,11 +78,46 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Rastreio diário: estado, "Rodar agora" e liga/desliga.
+  const rastreioEl = document.getElementById('rastreio');
+  const rastreioTexto = document.getElementById('rastreio-texto');
+  const rastreioRodar = document.getElementById('rastreio-rodar');
+  const rastreioLigado = document.getElementById('rastreio-ligado');
+
+  function hojeLocal() {
+    const d = new Date();
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  }
+
+  function conferirRastreio() {
+    chrome.runtime.sendMessage({ type: 'RASTREIO_STATUS' }, (resposta) => {
+      if (chrome.runtime.lastError || !resposta?.success) return;
+      const estado = resposta.estado || {};
+      rastreioLigado.checked = estado.ligado !== false;
+      rastreioTexto.textContent = self.MineraiRastreio.resumoDoRastreio(estado, resposta.rodando, hojeLocal());
+      const medindo = resposta.rodando || (Array.isArray(estado.fila) && estado.fila.length && !estado.terminadoEm && estado.dia === hojeLocal());
+      rastreioRodar.disabled = Boolean(medindo);
+    });
+  }
+
+  rastreioRodar.addEventListener('click', () => {
+    rastreioRodar.disabled = true;
+    rastreioTexto.textContent = 'Começando...';
+    chrome.runtime.sendMessage({ type: 'RASTREIO_RODAR' }, () => setTimeout(conferirRastreio, 800));
+  });
+
+  rastreioLigado.addEventListener('change', () => {
+    chrome.runtime.sendMessage({ type: 'RASTREIO_LIGAR', ligado: rastreioLigado.checked }, conferirRastreio);
+  });
+
   conferirLogin();
 
   // Enquanto o popup está aberto, reconfere: se a pessoa acabou de logar
   // em outra aba, o estado aqui se corrige sozinho.
-  setInterval(conferirLogin, 2500);
+  setInterval(() => {
+    conferirLogin();
+    conferirRastreio();
+  }, 2500);
 
   // Nosso painel. Não trocar por minerarads.com.br — aquele domínio é de outro
   // produto e mandava o cliente logar na conta errada.

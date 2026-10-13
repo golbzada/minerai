@@ -258,7 +258,33 @@
       .map((o) => o.id);
   }
 
+  // ---------------------------------------------------------------------------
+  // Texto do estado para o popup
+  // ---------------------------------------------------------------------------
+  function resumoDoRastreio(estado, rodando, hoje) {
+    const e = estado || {};
+    if (e.ligado === false) return 'Desligado';
+    if (e.parado === 'sem_login') return 'Conecte a conta para medir.';
+    if (e.parado === 'plano') return 'Plano inativo: rastreio pausado.';
+    if (e.dia !== hoje) return 'Ainda não rodou hoje.';
+    if (e.parado === 'bloqueio') return 'A Meta pediu uma pausa. Tenta de novo amanhã.';
+
+    const fila = Array.isArray(e.fila) ? e.fila : [];
+    if (rodando || (fila.length && !e.terminadoEm)) return `Medindo: ${e.feitas || 0} de ${e.total || 0}`;
+    if (!e.terminadoEm) return 'Ainda não rodou hoje.';
+
+    const hora = String(e.terminadoEm).slice(11, 16);
+    const partes = [`Hoje às ${hora}`, `${e.feitas || 0} ${e.feitas === 1 ? 'oferta' : 'ofertas'}`];
+    const ev = e.eventos || {};
+    const eventos = [];
+    if (ev.escalou) eventos.push(`${ev.escalou} ${ev.escalou === 1 ? 'escalou' : 'escalaram'}`);
+    if (ev.morreu) eventos.push(`${ev.morreu} ${ev.morreu === 1 ? 'morreu' : 'morreram'}`);
+    if (eventos.length) partes.push(eventos.join(', '));
+    return partes.join(' · ');
+  }
+
   self.MineraiRastreio = {
+    resumoDoRastreio,
     STAGE_DAYS,
     STAGE_BY_ADS,
     LIMITES,
