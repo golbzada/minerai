@@ -283,6 +283,7 @@
   function precisaChecarBrasil(meta, hoje) {
     const pais = String((meta && meta.country) || '');
     if (!/^[A-Z]{2}$/.test(pais) || pais === 'BR') return false;
+    if (meta.dead_since) return false; // morta lá fora: não interessa
     if (!meta.brasil_at) return true;
     return diffDias(meta.brasil_at, hoje) >= 7;
   }

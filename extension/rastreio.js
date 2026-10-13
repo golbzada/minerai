@@ -23,6 +23,7 @@ const RASTREIO_CONTINUAR = 'rastreio-continuar';
 const RASTREIO_LOTE_MS = 100 * 1000;
 const RASTREIO_TIMEOUT_MS = 15000;
 const RASTREIO_FALHAS_SEGUIDAS = 3; // leituras sem número seguidas = Meta freando
+const RASTREIO_BRASIL_POR_DIA = 30;  // ofertas gringas conferidas no Brasil por dia
 const RASTREIO_COLUNAS = 'id,name,history,status,funnel_notes,page_id,landing_page';
 const META_LIBRARY = 'https://www.facebook.com/ads/library/';
 
@@ -133,11 +134,13 @@ async function lerOfertaNaBiblioteca(meta, linha) {
 }
 
 /**
- * Gringa x Brasil para uma oferta do acervo minerada lá fora: anúncios do
- * mesmo anunciante no Brasil e anúncios que citam o mesmo site.
- * -> { anunciante, site } | { bloqueio } | null (não deu para ler)
+ * Gringa x Brasil: anúncios do mesmo anunciante no Brasil e anúncios no
+ * Brasil com o mesmo site (pela marca do site). Usado pelo rastreio (ofertas
+ * do acervo) e pelo Radar (buscas gringas).
+ * -> { anunciante, site, termo } | { bloqueio } | null (não deu para ler:
+ *    nada é guardado, para uma leitura falha nunca virar "janela aberta")
  */
-async function lerBrasilDaOferta(pageId, landingPage, pausa) {
+async function lerBrasilDaOferta(pageId, link, pausa) {
   const R = self.MineraiRadar;
   const RR = self.MineraiRastreio;
   if (!R || !/^\d{6,}$/.test(String(pageId || ''))) return null;
@@ -149,14 +152,15 @@ async function lerBrasilDaOferta(pageId, landingPage, pausa) {
   if (anunciante === null) return null;
 
   let site = null;
-  const dominio = R.dominioDoLink(landingPage);
-  if (dominio) {
+  const termo = R.termoDoSite(link);
+  if (termo) {
     await pausa();
-    const htmlSite = await buscarBiblioteca(R.urlSiteNoPais(dominio, 'BR'));
+    const htmlSite = await buscarBiblioteca(R.urlSiteNoPais(termo, 'BR'));
     if (htmlSite !== null && RR.pareceBloqueio(htmlSite)) return { bloqueio: true };
     site = RR.lerTotal(htmlSite);
+    if (site === null) return null;
   }
-  return { anunciante, site };
+  return { anunciante, site, termo };
 }
 
 /** Busca a linha da oferta (fresca, logo antes de gravar). */
@@ -327,6 +331,7 @@ async function rastreioTick({ forcar = false, pausa = pausaPadrao } = {}) {
           total: fila.length,
           feitas: 0,
           medidas: 0,
+          brasilHoje: 0,
           eventos: { escalou: 0, morreu: 0, decaindo: 0 },
           notificado: { escalou: 0, morreu: 0 },
           iniciadoEm: agoraLocal(),
@@ -379,7 +384,12 @@ async function rastreioTick({ forcar = false, pausa = pausaPadrao } = {}) {
             falhasSeguidas = 0;
             // Oferta minerada lá fora: uma vez por semana, confere o Brasil.
             let brasil = null;
-            if (self.MineraiRastreio.precisaChecarBrasil(meta, hoje)) {
+            if (
+              leitura.total > 0 &&
+              (estado.brasilHoje || 0) < RASTREIO_BRASIL_POR_DIA &&
+              self.MineraiRastreio.precisaChecarBrasil(meta, hoje)
+            ) {
+              estado.brasilHoje = (estado.brasilHoje || 0) + 1;
               brasil = await lerBrasilDaOferta(leitura.pageId || meta.page_id_real, linha.landing_page, pausa);
               if (brasil && brasil.bloqueio) {
                 estado.parado = 'bloqueio';

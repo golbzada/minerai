@@ -93,6 +93,7 @@ function ambiente({ ofertas, anuncios = {}, paginas = {}, sites = {}, logado = t
       const site = (u.match(/[?&]q=([^&]*)/) || [])[1];
       if (site) {
         const valor = sites[decodeURIComponent(site)];
+        if (valor === 'falha') return resposta('', 503);
         return resposta(`{"search_results_connection":{"count":${valor ?? 0},"edges":[]}}`);
       }
       const pagina = u.match(/view_all_page_id=(\d+)/)[1];
@@ -375,7 +376,7 @@ test('oferta gringa: o rastreio confere o Brasil e guarda junto da medição', a
     ofertas: [gringa()],
     anuncios: anunciosTres,
     paginas: { '7000001:US': 40, '7000001:BR': 0 },
-    sites: { '"shop.pipitea.com"': 0 }
+    sites: { '"pipitea"': 0 }
   });
   await amb.sw.rastreioTick(semPausa);
   const notas = amb.patches[0].corpo.funnel_notes;
@@ -394,4 +395,38 @@ test('oferta gringa já conferida nesta semana não confere de novo', async () =
   await amb.sw.rastreioTick(semPausa);
   assert.ok(!amb.buscasMeta.some((u) => u.includes('country=BR')));
   assert.match(amb.patches[0].corpo.funnel_notes, /"brasil_ads":2/);
+});
+
+test('oferta gringa: site que não respondeu não grava nada do Brasil', async () => {
+  const amb = ambiente({
+    ofertas: [gringa()],
+    anuncios: anunciosTres,
+    paginas: { '7000001:US': 40, '7000001:BR': 0 },
+    sites: { '"pipitea"': 'falha' }
+  });
+  await amb.sw.rastreioTick(semPausa);
+  assert.equal(amb.patches[0].corpo.ads_count, 40);
+  assert.doesNotMatch(amb.patches[0].corpo.funnel_notes, /brasil_/);
+});
+
+test('oferta gringa: desafio na checagem do Brasil grava a medição e para', async () => {
+  const desafio = "<script>function executeChallenge(){fetch('/x?challenge=3')}</script>";
+  const ofertas = [gringa(), { ...gringa(), id: uuid(2), funnel_notes: notas('', { library_id: '90000200', start_date: diasAntes(5), country: 'US' }) }];
+  const amb = ambiente({ ofertas, anuncios: anunciosTres, paginas: { '7000001:US': 40, '7000001:BR': desafio, '7000002:US': 5 } });
+  await amb.sw.rastreioTick(semPausa);
+  assert.equal(amb.patches.length, 1);
+  assert.equal(amb.patches[0].corpo.ads_count, 40);
+  assert.equal(amb.storage.minerai_rastreio.parado, 'bloqueio');
+});
+
+test('no máximo 30 checagens do Brasil por dia no rastreio', async () => {
+  const ofertas = Array.from({ length: 33 }, (_, i) => ({
+    ...gringa(),
+    id: `00000000-0000-4000-8000-${String(100 + i).padStart(12, '0')}`,
+    funnel_notes: notas('', { library_id: '90000100', start_date: diasAntes(5), country: 'US' })
+  }));
+  const amb = ambiente({ ofertas, anuncios: anunciosTres, paginas: { '7000001:US': 40, '7000001:BR': 0 }, sites: { '"pipitea"': 0 } });
+  await amb.sw.rastreioTick(semPausa);
+  const checadas = amb.buscasMeta.filter((u) => u.includes('country=BR') && u.includes('view_all_page_id')).length;
+  assert.equal(checadas, 30);
 });

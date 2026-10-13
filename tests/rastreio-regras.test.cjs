@@ -239,4 +239,5 @@ test('precisaChecarBrasil: só oferta de fora, uma vez por semana', () => {
   assert.equal(R.precisaChecarBrasil({ country: 'BR' }, HOJE), false);
   assert.equal(R.precisaChecarBrasil({ country: 'ALL' }, HOJE), false);
   assert.equal(R.precisaChecarBrasil({}, HOJE), false);
+  assert.equal(R.precisaChecarBrasil({ country: 'US', dead_since: diasAntes(2) }, HOJE), false);
 });

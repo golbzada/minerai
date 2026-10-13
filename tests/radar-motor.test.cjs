@@ -300,8 +300,8 @@ test('busca gringa confere o Brasil: anunciante e site', async () => {
     radar: { buscas: buscaGringa },
     respostas: {
       'weight loss': buscaHtml([anuncio('1', '111111', 20), anuncio('2', '222222', 30)]),
-      '"loja111111.com.br"': buscaHtml([], 0),
-      '"loja222222.com.br"': buscaHtml([], 9)
+      '"loja111111"': buscaHtml([], 0),
+      '"loja222222"': buscaHtml([], 9)
     },
     paginas: { '111111:BR': 0, '222222:BR': 3 }
   });
@@ -320,7 +320,7 @@ test('busca no Brasil não confere o Brasil de novo', async () => {
 
 test('checagem do Brasil vale por uma semana', async () => {
   const amb = ambiente({
-    radar: { buscas: buscaGringa, brasil: { 111111: { data: diasAntes(2), anunciante: 0, site: 0 } } },
+    radar: { buscas: buscaGringa, brasil: { 111111: { data: diasAntes(2), anunciante: 0, site: 0, termo: 'loja111111' } } },
     respostas: { 'weight loss': buscaHtml([anuncio('1', '111111', 20)]) }
   });
   await amb.sw.radarTick(semPausa);
@@ -339,4 +339,34 @@ test('desafio da Meta na checagem do Brasil para o Radar e guarda o que já leu'
   const r = amb.radarGuardado();
   assert.equal(r.parado, 'bloqueio');
   assert.equal(r.resultados.g1.achados.length, 1);
+});
+
+test('site que não respondeu não vira janela nem fica guardado', async () => {
+  const amb = ambiente({
+    radar: { buscas: buscaGringa },
+    respostas: { 'weight loss': buscaHtml([anuncio('1', '111111', 20)]), '"loja111111"': null },
+    paginas: { '111111:BR': 0 }
+  });
+  await amb.sw.radarTick(semPausa);
+  assert.equal(amb.radarGuardado().resultados.g1.achados[0].brasil, undefined);
+  assert.equal((amb.radarGuardado().brasil || {})['111111'], undefined);
+});
+
+test('cada checagem do Brasil é guardada na hora (o Chrome pode encerrar a extensão no meio)', async () => {
+  let guardadoNaSegunda = null;
+  const amb = ambiente({
+    radar: { buscas: buscaGringa },
+    respostas: {
+      'weight loss': buscaHtml([anuncio('1', '111111', 20), anuncio('2', '222222', 25)]),
+      '"loja111111"': buscaHtml([], 0),
+      '"loja222222"': buscaHtml([], 0)
+    },
+    paginas: { '111111:BR': 0, '222222:BR': 0 },
+    aoBuscar: ({ termo, storage }) => {
+      if (termo === '"loja222222"') guardadoNaSegunda = JSON.parse(JSON.stringify((storage[CHAVE].brasil || {})['111111'] || null));
+    }
+  });
+  await amb.sw.radarTick(semPausa);
+  assert.ok(guardadoNaSegunda, 'a checagem do 1º anunciante já devia estar salva');
+  assert.equal(guardadoNaSegunda.anunciante, 0);
 });

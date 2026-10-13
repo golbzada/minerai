@@ -96,37 +96,23 @@ function rastreioLiberaRadar(estado, hoje) {
 }
 
 /**
- * Gringa x Brasil: para os anunciantes escolhidos, conta na Biblioteca do
- * Brasil os anúncios do mesmo anunciante e os que citam o mesmo site.
+ * Gringa x Brasil: para os anunciantes escolhidos, lê o Brasil (mesma leitura
+ * do rastreio, lerBrasilDaOferta) e guarda CADA resultado na hora — salvar
+ * também mantém a extensão acordada entre uma leitura e outra.
  * Devolve { cache: {pageId: {...}}, bloqueio }.
  */
-async function checarBrasil(achados, cache, hoje, pausa) {
+async function checarBrasil(achados, cache, hoje, pausa, guardar) {
   const R = self.MineraiRadar;
-  const RR = self.MineraiRastreio;
   const novos = {};
   const ids = R.escolherParaChecarBrasil(achados, cache, hoje, RADAR_BRASIL_POR_BUSCA);
 
-  const contar = async (query) => {
-    await pausa();
-    const html = await buscarBiblioteca(query);
-    if (html !== null && RR.pareceBloqueio(html)) return { bloqueio: true };
-    return { total: RR.lerTotal(html) };
-  };
-
   for (const id of ids) {
     const achado = achados.find((a) => a.pageId === id);
-    const anunciante = await contar(R.urlAnuncianteNoPais(id, 'BR'));
-    if (anunciante.bloqueio) return { cache: novos, bloqueio: true };
-    if (anunciante.total === null) continue; // não respondeu: tenta outro dia
-
-    let site = null;
-    const dominio = R.dominioDoLink(achado && achado.link);
-    if (dominio) {
-      const r = await contar(R.urlSiteNoPais(dominio, 'BR'));
-      if (r.bloqueio) return { cache: novos, bloqueio: true };
-      site = r.total;
-    }
-    novos[id] = { data: hoje, anunciante: anunciante.total, site, dominio };
+    const lido = await lerBrasilDaOferta(id, achado && achado.link, pausa);
+    if (lido && lido.bloqueio) return { cache: novos, bloqueio: true };
+    if (!lido) continue; // não respondeu: tenta outro dia, sem chutar zero
+    novos[id] = { data: hoje, anunciante: lido.anunciante, site: lido.site, termo: lido.termo || '' };
+    await guardar({ [id]: novos[id] });
   }
   return { cache: novos, bloqueio: false };
 }
@@ -231,10 +217,11 @@ async function radarTick({ forcar = false, pausa = pausaPadrao } = {}) {
       // Busca de fora do Brasil: confere se essas ofertas já rodam aqui.
       let brasilNovo = {};
       if (busca.pais !== 'BR' && busca.pais !== 'ALL') {
-        const checagem = await checarBrasil(achados, radar.brasil || {}, hoje, pausa);
+        const guardar = (entrada) => atualizarRadar(chave, (r) => ({ ...r, brasil: juntarCacheBrasil(r.brasil, entrada) }));
+        const checagem = await checarBrasil(achados, radar.brasil || {}, hoje, pausa, guardar);
         brasilNovo = checagem.cache;
         if (checagem.bloqueio) parado = 'bloqueio';
-        achados = R.aplicarBrasil(achados, { ...(radar.brasil || {}), ...brasilNovo });
+        achados = R.aplicarBrasil(achados, { ...(radar.brasil || {}), ...brasilNovo }, hoje);
       }
       // Rodar de novo no mesmo dia não pode apagar a comparação com ontem.
       const totalAnterior = anterior

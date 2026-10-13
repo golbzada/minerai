@@ -277,6 +277,9 @@ export default function RadarPage() {
                         {gringa && (
                           <p className={`radar-brasil ${textoBrasil(a.brasil)?.janela ? 'janela' : ''}`}>
                             {textoBrasil(a.brasil)?.texto || 'Brasil: ainda não conferido'}
+                            {a.brasil && a.brasil.data && a.brasil.data !== hoje && (
+                              <small> (conferido em {a.brasil.data.slice(8, 10)}/{a.brasil.data.slice(5, 7)})</small>
+                            )}
                           </p>
                         )}
                         {a.texto && <p className="radar-texto">{a.texto}</p>}

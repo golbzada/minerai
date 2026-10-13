@@ -153,8 +153,28 @@
   // Dois sinais, lidos na Biblioteca do Brasil: anúncios ativos do MESMO
   // anunciante e anúncios que citam o MESMO site (frase exata).
   // ---------------------------------------------------------------------------
-  const BRASIL_VALIDADE_DIAS = 7;
-  const SITES_SEM_OFERTA = /(^|\.)(facebook\.com|fb\.me|fb\.com|instagram\.com|wa\.me|whatsapp\.com|m\.me|messenger\.com|linktr\.ee|youtube\.com|youtu\.be|tiktok\.com)$/i;
+  const BRASIL_VALIDADE_DIAS = 7;    // recheca depois disso
+  const BRASIL_MOSTRA_DIAS = 14;     // depois disso, a checagem é velha demais para mostrar
+  // Sem site próprio para comparar: rede social, WhatsApp, encurtador,
+  // página de links e checkout compartilhado (Hotmart, Kiwify... servem a
+  // milhares de produtos, então o "mesmo site" não diria nada).
+  const SITES_SEM_OFERTA = new RegExp(
+    '(^|\\.)(' + [
+      'facebook\\.com', 'fb\\.me', 'fb\\.com', 'instagram\\.com', 'wa\\.me', 'wa\\.link', 'whatsapp\\.com',
+      'm\\.me', 'messenger\\.com', 't\\.me', 'telegram\\.me', 'linktr\\.ee', 'lnk\\.bio', 'beacons\\.ai',
+      'youtube\\.com', 'youtu\\.be', 'tiktok\\.com', 'bit\\.ly', 'tinyurl\\.com', 'cutt\\.ly', 'goo\\.gl',
+      'hotmart\\.com', 'kiwify\\.com\\.br', 'kiwify\\.app', 'eduzz\\.com', 'monetizze\\.com\\.br', 'braip\\.com',
+      'ticto\\.app', 'perfectpay\\.com\\.br', 'clickbank\\.net', 'digistore24\\.com', 'buygoods\\.com',
+      'shopify\\.com', 'myshopify\\.com'
+    ].join('|') + ')$',
+    'i'
+  );
+  // Partes de domínio que não identificam marca nenhuma.
+  const PALAVRAS_GENERICAS = new Set([
+    'www', 'shop', 'store', 'loja', 'get', 'try', 'buy', 'go', 'app', 'site', 'page', 'pages', 'my', 'the',
+    'oferta', 'oficial', 'official', 'landing', 'lp', 'checkout', 'pay', 'secure', 'link', 'promo', 'info', 'online'
+  ]);
+  const SUFIXOS_DUPLOS = /\.(com|net|org|gov|edu|co)\.[a-z]{2}$/i;
 
   /** Domínio do site de vendas (vazio para rede social, WhatsApp, encurtador). */
   function dominioDoLink(link) {
@@ -164,6 +184,23 @@
     } catch (e) {
       return '';
     }
+  }
+
+  /**
+   * O que procurar no Brasil para achar o mesmo produto: a marca do site
+   * ("pipitea" em shop.pipitea.com, que também pega pipitea.com.br) quando ela
+   * é distintiva; senão o domínio. Vazio quando não há site próprio.
+   * Confirmado na Biblioteca real: a busca por frase acha o site também no
+   * link do anúncio, mesmo que o texto não cite o site.
+   */
+  function termoDoSite(link) {
+    const host = dominioDoLink(link);
+    if (!host) return '';
+    const partes = host.split('.');
+    const base = SUFIXOS_DUPLOS.test(host) ? partes.slice(-3).join('.') : partes.slice(-2).join('.');
+    const marca = base.split('.')[0];
+    if (marca.length >= 5 && !PALAVRAS_GENERICAS.has(marca)) return marca;
+    return base;
   }
 
   function paisValido(pais) {
@@ -182,26 +219,38 @@
     );
   }
 
-  /** Quem checar no Brasil hoje: sem checagem da última semana, novas escalando primeiro. */
+  /** A checagem guardada ainda vale para este achado (mesmo site, recente)? */
+  function checagemVale(c, achado, hoje, dias) {
+    if (!c || !c.data || diffDias(c.data, hoje) >= dias) return false;
+    return (c.termo || '') === termoDoSite(achado && achado.link);
+  }
+
+  /**
+   * Quem checar no Brasil hoje: só as novas escalando (as outras ficam
+   * escondidas pelo filtro padrão), sem checagem válida da última semana.
+   */
   function escolherParaChecarBrasil(achados, cache, hoje, max = 8) {
     return (achados || [])
-      .filter((a) => {
-        const c = (cache || {})[a.pageId];
-        return !(c && c.data && diffDias(c.data, hoje) < BRASIL_VALIDADE_DIAS);
-      })
-      .sort((a, b) => (Number(b.novaEscalando) - Number(a.novaEscalando)) || (a.posicao - b.posicao))
+      .filter((a) => a.novaEscalando)
+      .filter((a) => !checagemVale((cache || {})[a.pageId], a, hoje, BRASIL_VALIDADE_DIAS))
+      .sort((a, b) => a.posicao - b.posicao)
       .slice(0, max)
       .map((a) => a.pageId);
   }
 
-  /** Junta o que se sabe do Brasil em cada achado. Janela aberta = ninguém roda aqui. */
-  function aplicarBrasil(achados, cache) {
+  /**
+   * Junta o que se sabe do Brasil em cada achado. Janela aberta = zero
+   * anúncios do anunciante E zero com o mesmo site. Sem site para comparar,
+   * não há janela (seria afirmar demais).
+   */
+  function aplicarBrasil(achados, cache, hoje) {
     return (achados || []).map((a) => {
       const c = (cache || {})[a.pageId];
-      if (!c) return a;
-      const anunciante = c.anunciante ?? null;
-      const site = c.site ?? null;
-      return { ...a, brasil: { anunciante, site, janela: anunciante === 0 && (site === 0 || site === null), data: c.data } };
+      if (!checagemVale(c, a, hoje, BRASIL_MOSTRA_DIAS)) return a;
+      const anunciante = Number.isFinite(c.anunciante) ? c.anunciante : null;
+      if (anunciante === null) return a;
+      const site = Number.isFinite(c.site) ? c.site : null;
+      return { ...a, brasil: { anunciante, site, janela: anunciante === 0 && site === 0, data: c.data } };
     });
   }
 
@@ -213,6 +262,7 @@
     montarAchados,
     diffDias,
     dominioDoLink,
+    termoDoSite,
     urlAnuncianteNoPais,
     urlSiteNoPais,
     escolherParaChecarBrasil,

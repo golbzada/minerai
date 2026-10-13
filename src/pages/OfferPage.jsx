@@ -12,7 +12,7 @@ import { normalizeHistory, resolveRunningDays, resolvePageActiveAds, resolveStat
 import { safeHttpUrl, safeImageSrc, safeCreativeThumb } from '../utils/url';
 import { STAGES, CHECKLIST_ITEMS, getExtras, allTags, offerMeta, withMetaPatch } from '../utils/offerExtras';
 import { getAccess, lockedMessage } from '../utils/plan';
-import { brasilDaOferta, textoBrasil } from '../utils/gringa';
+import { brasilDaOferta, textoBrasil, resumoCurtoBrasil } from '../utils/gringa';
 
 /**
  * Página própria da oferta: criativo grande, resumo editável (favorito, nota,
@@ -286,10 +286,10 @@ export default function OfferPage({ id }) {
               <div><small>Dias rodando</small><strong>{days}</strong></div>
               <div><small>Anúncios ativos</small><strong>{offer.ads_count ?? 0}</strong></div>
               {textoBrasil(brasilDaOferta(offer)) && (
-                <div title="Conferido pelo rastreio uma vez por semana: anúncios do mesmo anunciante e do mesmo site no Brasil">
+                <div title={`${textoBrasil(brasilDaOferta(offer)).texto}. Conferido pelo rastreio uma vez por semana.`}>
                   <small>No Brasil</small>
                   <strong className={textoBrasil(brasilDaOferta(offer)).janela ? 'brasil-janela' : ''}>
-                    {textoBrasil(brasilDaOferta(offer)).janela ? 'Janela aberta' : `${brasilDaOferta(offer).anunciante} anúncios`}
+                    {resumoCurtoBrasil(brasilDaOferta(offer))}
                   </strong>
                 </div>
               )}
