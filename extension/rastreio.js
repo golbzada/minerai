@@ -23,7 +23,7 @@ const RASTREIO_CONTINUAR = 'rastreio-continuar';
 const RASTREIO_LOTE_MS = 100 * 1000;
 const RASTREIO_TIMEOUT_MS = 15000;
 const RASTREIO_FALHAS_SEGUIDAS = 3; // leituras sem número seguidas = Meta freando
-const RASTREIO_COLUNAS = 'id,name,history,status,funnel_notes,page_id';
+const RASTREIO_COLUNAS = 'id,name,history,status,funnel_notes,page_id,landing_page';
 const META_LIBRARY = 'https://www.facebook.com/ads/library/';
 
 let rastreioRodando = false;
@@ -132,6 +132,33 @@ async function lerOfertaNaBiblioteca(meta, linha) {
   };
 }
 
+/**
+ * Gringa x Brasil para uma oferta do acervo minerada lá fora: anúncios do
+ * mesmo anunciante no Brasil e anúncios que citam o mesmo site.
+ * -> { anunciante, site } | { bloqueio } | null (não deu para ler)
+ */
+async function lerBrasilDaOferta(pageId, landingPage, pausa) {
+  const R = self.MineraiRadar;
+  const RR = self.MineraiRastreio;
+  if (!R || !/^\d{6,}$/.test(String(pageId || ''))) return null;
+
+  await pausa();
+  const html = await buscarBiblioteca(R.urlAnuncianteNoPais(pageId, 'BR'));
+  if (html !== null && RR.pareceBloqueio(html)) return { bloqueio: true };
+  const anunciante = RR.lerTotal(html);
+  if (anunciante === null) return null;
+
+  let site = null;
+  const dominio = R.dominioDoLink(landingPage);
+  if (dominio) {
+    await pausa();
+    const htmlSite = await buscarBiblioteca(R.urlSiteNoPais(dominio, 'BR'));
+    if (htmlSite !== null && RR.pareceBloqueio(htmlSite)) return { bloqueio: true };
+    site = RR.lerTotal(htmlSite);
+  }
+  return { anunciante, site };
+}
+
 /** Busca a linha da oferta (fresca, logo antes de gravar). */
 async function buscarLinhaOferta(id, token) {
   const uuid = safeUuid(id);
@@ -149,7 +176,7 @@ async function buscarLinhaOferta(id, token) {
 }
 
 /** Grava a medição do dia. Devolve os eventos (escalou, morreu...). */
-async function gravarMedicao(linha, leitura, hoje, token) {
+async function gravarMedicao(linha, leitura, hoje, token, brasil = null) {
   const R = self.MineraiRastreio;
   const { notes, meta } = decodeNotes(linha.funnel_notes);
 
@@ -169,6 +196,11 @@ async function gravarMedicao(linha, leitura, hoje, token) {
     page_id_real: leitura.pageId || meta.page_id_real,
     country: leitura.country || meta.country
   };
+  if (brasil && brasil.anunciante !== null && brasil.anunciante !== undefined) {
+    novaMeta.brasil_ads = brasil.anunciante;
+    novaMeta.brasil_site = brasil.site ?? undefined;
+    novaMeta.brasil_at = hoje;
+  }
 
   const patch = {
     history: R.upsertHistory(linha.history, hoje, leitura.total, R.KIND),
@@ -345,10 +377,19 @@ async function rastreioTick({ forcar = false, pausa = pausaPadrao } = {}) {
             await marcarTentativa(id, hoje, token);
           } else {
             falhasSeguidas = 0;
+            // Oferta minerada lá fora: uma vez por semana, confere o Brasil.
+            let brasil = null;
+            if (self.MineraiRastreio.precisaChecarBrasil(meta, hoje)) {
+              brasil = await lerBrasilDaOferta(leitura.pageId || meta.page_id_real, linha.landing_page, pausa);
+              if (brasil && brasil.bloqueio) {
+                estado.parado = 'bloqueio';
+                brasil = null;
+              }
+            }
             // Relê logo antes de gravar: a pessoa pode ter editado a oferta
             // no painel enquanto a Biblioteca respondia.
             const fresca = (await buscarLinhaOferta(id, token)) || linha;
-            const eventos = await gravarMedicao(fresca, leitura, hoje, token);
+            const eventos = await gravarMedicao(fresca, leitura, hoje, token, brasil);
             estado.medidas = (estado.medidas || 0) + 1;
             eventos.forEach((e) => {
               if (e.tipo in estado.eventos) estado.eventos[e.tipo] += 1;
@@ -366,6 +407,7 @@ async function rastreioTick({ forcar = false, pausa = pausaPadrao } = {}) {
       estado.fila.shift();
       estado.feitas = (estado.feitas || 0) + 1;
       const ligado = await salvarProgresso(estado);
+      if (estado.parado) break; // a Meta freou depois da medição gravada
       if (ligado === false && estado.forcado !== hoje) break;
       if (estado.fila.length) await pausa();
     }

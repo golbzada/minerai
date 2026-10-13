@@ -38,7 +38,7 @@ const CHAVE = `minerai_radar:${USER.id}`;
 /** Rastreio das ofertas já terminado hoje (o Radar roda depois dele). */
 const rastreioTerminado = () => ({ ligado: true, dia: hojeLocal(), fila: [], terminadoEm: `${hojeLocal()}T08:00`, parado: null });
 
-function ambiente({ radar = null, respostas = {}, logado = true, rastreio = rastreioTerminado(), aoBuscar = null }) {
+function ambiente({ radar = null, respostas = {}, logado = true, rastreio = rastreioTerminado(), aoBuscar = null, paginas = {} }) {
   const storage = {};
   if (logado) {
     storage.minerai_user = USER;
@@ -76,6 +76,13 @@ function ambiente({ radar = null, respostas = {}, logado = true, rastreio = rast
     const u = String(url);
     if (u.includes('facebook.com/ads/library/')) {
       buscas.push(u);
+      const pagina = (u.match(/view_all_page_id=(\d+)/) || [])[1];
+      if (pagina) {
+        const pais = u.match(/country=([A-Z]+)/)[1];
+        const valor = paginas[`${pagina}:${pais}`];
+        if (typeof valor === 'string') return { ok: true, status: 200, text: async () => valor };
+        return { ok: true, status: 200, text: async () => `{"search_results_connection":{"count":${valor ?? 0},"edges":[]}}` };
+      }
       const termo = decodeURIComponent((u.match(/[?&]q=([^&]*)/) || [])[1] || '');
       if (aoBuscar) aoBuscar({ termo, storage });
       if (respostas[termo] === null) return { ok: false, status: 503, text: async () => '' };
@@ -282,4 +289,54 @@ test('cada conta tem o próprio Radar', async () => {
   amb.storage.minerai_user = { ...USER, id: '11111111-2222-4333-8444-555555555555' };
   const lista = await amb.mensagem({ type: 'RADAR_LISTAR' });
   assert.deepEqual(lista.buscas, []);
+});
+
+// ---- Gringa x Brasil no Radar ----
+
+const buscaGringa = [{ id: 'g1', termo: 'weight loss', pais: 'US' }];
+
+test('busca gringa confere o Brasil: anunciante e site', async () => {
+  const amb = ambiente({
+    radar: { buscas: buscaGringa },
+    respostas: {
+      'weight loss': buscaHtml([anuncio('1', '111111', 20), anuncio('2', '222222', 30)]),
+      '"loja111111.com.br"': buscaHtml([], 0),
+      '"loja222222.com.br"': buscaHtml([], 9)
+    },
+    paginas: { '111111:BR': 0, '222222:BR': 3 }
+  });
+  await amb.sw.radarTick(semPausa);
+  const achados = amb.radarGuardado().resultados.g1.achados;
+  assert.deepEqual(achados.map((a) => [a.pageId, a.brasil.anunciante, a.brasil.site, a.brasil.janela]), [['111111', 0, 0, true], ['222222', 3, 9, false]]);
+  assert.ok(amb.radarGuardado().brasil['111111']);
+});
+
+test('busca no Brasil não confere o Brasil de novo', async () => {
+  const amb = ambiente({ radar: { buscas: duasBuscas.slice(0, 1) }, respostas: { 'mapas mentais': buscaHtml([anuncio('1', '111111', 20)]) } });
+  await amb.sw.radarTick(semPausa);
+  assert.ok(!amb.buscas.some((u) => u.includes('view_all_page_id')));
+  assert.equal(amb.radarGuardado().resultados.b1.achados[0].brasil, undefined);
+});
+
+test('checagem do Brasil vale por uma semana', async () => {
+  const amb = ambiente({
+    radar: { buscas: buscaGringa, brasil: { 111111: { data: diasAntes(2), anunciante: 0, site: 0 } } },
+    respostas: { 'weight loss': buscaHtml([anuncio('1', '111111', 20)]) }
+  });
+  await amb.sw.radarTick(semPausa);
+  assert.ok(!amb.buscas.some((u) => u.includes('view_all_page_id')));
+  assert.equal(amb.radarGuardado().resultados.g1.achados[0].brasil.janela, true);
+});
+
+test('desafio da Meta na checagem do Brasil para o Radar e guarda o que já leu', async () => {
+  const desafio = "<script>function executeChallenge(){fetch('/x?challenge=3')}</script>";
+  const amb = ambiente({
+    radar: { buscas: buscaGringa },
+    respostas: { 'weight loss': buscaHtml([anuncio('1', '111111', 20)]) },
+    paginas: { '111111:BR': desafio }
+  });
+  await amb.sw.radarTick(semPausa);
+  const r = amb.radarGuardado();
+  assert.equal(r.parado, 'bloqueio');
+  assert.equal(r.resultados.g1.achados.length, 1);
 });
