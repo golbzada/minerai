@@ -1092,4 +1092,4 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Rastreio diário das ofertas (alarmes, fila, leitura da Biblioteca) e
 // Radar do nicho (buscas salvas).
-importScripts('rastreio.js', 'radar-regras.js', 'radar.js');
+importScripts('rastreio.js', 'radar-regras.js', 'radar.js', 'transcricao-regras.js', 'transcricao.js');

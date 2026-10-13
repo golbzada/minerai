@@ -88,3 +88,31 @@ test('nomeDoRoteiro segue o nome do vídeo', () => {
   assert.equal(T.nomeDoRoteiro('minerai_video_1760000000000.mp4'), 'minerai_video_1760000000000_roteiro.txt');
   assert.equal(T.nomeDoRoteiro('x'), 'minerai_roteiro.txt');
 });
+
+test('idiomaProvavel pelo texto do anúncio', () => {
+  assert.equal(T.idiomaProvavel('Você ainda não sabe como estudar para o concurso? Clique e veja o método.', 'US'), 'portuguese');
+  assert.equal(T.idiomaProvavel('Are you still struggling with your weight? Click the link and get yours today.', 'BR'), 'english');
+  assert.equal(T.idiomaProvavel('¿Todavía no sabes cómo bajar de peso? Haz clic y descubre el método para ti.', 'BR'), 'spanish');
+});
+
+test('idiomaProvavel sem texto usa o país da busca', () => {
+  assert.equal(T.idiomaProvavel('', 'BR'), 'portuguese');
+  assert.equal(T.idiomaProvavel('', 'MX'), 'spanish');
+  assert.equal(T.idiomaProvavel('', 'US'), 'english');
+  assert.equal(T.idiomaProvavel('', 'ALL'), 'portuguese');
+  assert.equal(T.idiomaProvavel('🔥🔥 50% OFF', 'FR'), 'french');
+});
+
+test('a oferta no fim do vídeo já faz parte da chamada final', () => {
+  const r = T.montarRoteiro({
+    duracao: 27.5,
+    chunks: [
+      trecho(0, 3.6, 'Será que vale a pena?'),
+      trecho(3.6, 21.5, 'Meu filho aprendeu rápido.'),
+      trecho(21.5, 25, 'Tem uma oferta especial pra você economizar.'),
+      trecho(25, 27.5, 'Clique aqui no link.')
+    ]
+  });
+  assert.equal(r.cta.inicio, 21.5);
+  assert.equal(r.cta.texto, 'Tem uma oferta especial pra você economizar. Clique aqui no link.');
+});

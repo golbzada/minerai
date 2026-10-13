@@ -16,7 +16,7 @@
   const CTA_FIM_SEGUNDOS = 8;   // sem frase de ação: os últimos 8 s
   const CTA_INICIO_MIN = 0.4;   // ...desde que comecem depois de 40% do vídeo
 
-  const FRASE_DE_ACAO = /\b(clique|clica|toque|toca|acesse|acessa|link|garanta|garante|compre|compra|adquira|inscreva|baixe|baixa|saiba mais|aproveite|cadastre|click|tap|buy|order|shop now|learn more|sign up|get yours|haz clic|compra ahora)\b/i;
+  const FRASE_DE_ACAO = /\b(oferta|desconto|promoção|promocao|cupom|offer|discount|clique|clica|toque|toca|acesse|acessa|link|garanta|garante|compre|compra|adquira|inscreva|baixe|baixa|saiba mais|aproveite|cadastre|click|tap|buy|order|shop now|learn more|sign up|get yours|haz clic|compra ahora)\b/i;
 
   function formatarTempo(segundos) {
     const s = Math.max(0, Math.floor(Number(segundos) || 0));
@@ -152,5 +152,39 @@
     return /\.(mp4|mov|webm)$/i.test(nome) ? nome.replace(/\.(mp4|mov|webm)$/i, '_roteiro.txt') : 'minerai_roteiro.txt';
   }
 
-  self.MineraiTranscricao = { formatarTempo, montarRoteiro, roteiroEmTexto, nomeDoRoteiro };
+  // ---------------------------------------------------------------------------
+  // Idioma do vídeo. Sem ele o Whisper assume inglês e TRADUZ (visto num
+  // anúncio brasileiro em 13/10/2026). O texto do anúncio quase sempre está
+  // no mesmo idioma do vídeo; sem texto, vale o país da busca.
+  // ---------------------------------------------------------------------------
+  const PALAVRAS = {
+    portuguese: ['você', 'voce', 'não', 'nao', 'para', 'com', 'uma', 'que', 'dos', 'das', 'seu', 'sua', 'mais', 'como', 'isso', 'esse', 'essa', 'está', 'tem', 'por', 'aos', 'nos', 'nas', 'em', 'um', 'meu', 'minha', 'agora', 'clique', 'veja', 'grátis', 'ainda', 'sabe', 'no', 'na', 'é'],
+    spanish: ['usted', 'tú', 'para', 'con', 'una', 'que', 'los', 'las', 'del', 'el', 'es', 'en', 'un', 'mi', 'más', 'como', 'cómo', 'esto', 'ese', 'esta', 'está', 'tiene', 'por', 'al', 'haz', 'clic', 'gratis', 'todavía', 'sabes', 'descubre', 'ti', 'y', 'ahora', 'aquí'],
+    english: ['you', 'your', 'yours', 'the', 'and', 'for', 'with', 'this', 'that', 'is', 'are', 'still', 'click', 'get', 'today', 'now', 'free', 'our', 'we', 'to', 'of', 'it', 'link', 'here'],
+    french: ['vous', 'votre', 'les', 'des', 'et', 'pour', 'avec', 'une', 'est', 'dans', 'pas', 'plus', 'cliquez', 'maintenant'],
+    german: ['sie', 'ihr', 'der', 'die', 'das', 'und', 'für', 'mit', 'ein', 'eine', 'ist', 'nicht', 'jetzt', 'klicken'],
+    italian: ['il', 'gli', 'per', 'con', 'una', 'che', 'non', 'più', 'clicca', 'adesso', 'questo']
+  };
+  const POR_PAIS = {
+    portuguese: ['BR', 'PT', 'AO', 'MZ'],
+    spanish: ['ES', 'MX', 'AR', 'CO', 'CL', 'PE', 'UY', 'PY', 'BO', 'EC', 'VE', 'GT', 'CR', 'PA', 'DO', 'HN', 'SV', 'NI', 'CU', 'PR'],
+    english: ['US', 'GB', 'CA', 'AU', 'NZ', 'IE', 'ZA', 'IN', 'PH', 'SG', 'NG'],
+    french: ['FR', 'BE', 'LU', 'MC'],
+    german: ['DE', 'AT', 'CH'],
+    italian: ['IT']
+  };
+
+  function idiomaProvavel(texto, pais) {
+    const palavras = String(texto || '').toLowerCase().match(/[a-zà-ÿñç]+/g) || [];
+    const placar = Object.entries(PALAVRAS)
+      .map(([idioma, lista]) => [idioma, palavras.filter((p) => lista.includes(p)).length])
+      .sort((a, b) => b[1] - a[1]);
+    if (placar[0][1] >= 2 && placar[0][1] > placar[1][1]) return placar[0][0];
+
+    const p = String(pais || '').toUpperCase();
+    const doPais = Object.entries(POR_PAIS).find(([, paises]) => paises.includes(p));
+    return doPais ? doPais[0] : 'portuguese';
+  }
+
+  self.MineraiTranscricao = { formatarTempo, montarRoteiro, roteiroEmTexto, nomeDoRoteiro, idiomaProvavel };
 })();

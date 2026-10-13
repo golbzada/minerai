@@ -24,10 +24,14 @@ const destino = join(raiz, 'public', 'minerai-extensao.zip');
 
 const DEV_ONLY_MATCHES = ['http://localhost:5173/*'];
 
+// Nunca vão para o zip: pasta de teste local e mapas de depuração.
+const FORA_DO_ZIP = (nome) => nome.startsWith('_') || nome.endsWith('.map');
+
 /** Lista todos os arquivos da pasta, em ordem estável. */
 function listar(dir) {
   const saida = [];
   for (const nome of readdirSync(dir).sort()) {
+    if (FORA_DO_ZIP(nome)) continue;
     const caminho = join(dir, nome);
     if (statSync(caminho).isDirectory()) saida.push(...listar(caminho));
     else saida.push(caminho);

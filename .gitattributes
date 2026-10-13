@@ -1,0 +1,3 @@
+# Arquivos de terceiros copiados sem mudança: o git não mexe nas quebras de linha.
+extension/vendor/** -text
+*.wasm binary

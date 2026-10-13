@@ -1921,6 +1921,7 @@
         if (response && response.success) {
           btn.innerHTML = `${icon('check')}<span class="minerai-btn-text">Baixado!</span>`;
           showToast(`Download de ${media.type === 'video' ? 'vídeo' : 'imagem'} iniciado!`);
+          if (media.type === 'video') iniciarTranscricao(card, media);
           setTimeout(() => {
             btn.innerHTML = DOWNLOAD_IDLE_HTML;
           }, 2500);
@@ -1928,6 +1929,7 @@
           triggerDirectDownload(media.url, media.filename).then(() => {
             btn.innerHTML = `${icon('check')}<span class="minerai-btn-text">Baixado!</span>`;
             showToast(`Download de ${media.type === 'video' ? 'vídeo' : 'imagem'} iniciado!`);
+            if (media.type === 'video') iniciarTranscricao(card, media);
             setTimeout(() => {
               btn.innerHTML = DOWNLOAD_IDLE_HTML;
             }, 2500);
@@ -2057,7 +2059,7 @@
   }
 
   // Toast de notificação na tela
-  function showToast(msg) {
+  function showToast(msg, duracaoMs = 3000) {
     const existing = document.querySelector('.minerai-toast');
     if (existing) existing.remove();
 
@@ -2070,8 +2072,65 @@
       toast.style.opacity = '0';
       toast.style.transform = 'translateY(100%)';
       setTimeout(() => toast.remove(), 300);
-    }, 3000);
+    }, duracaoMs);
   }
+
+  // ============================================================================
+  // TRANSCRIÇÃO DO CRIATIVO: depois de baixar um vídeo, sai o roteiro em .txt
+  // (gancho, desenvolvimento, chamada final e prompt para a IA).
+  // ============================================================================
+  let transcrevendo = false;
+
+  function iniciarTranscricao(card, media) {
+    if (transcrevendo) {
+      showToast('Já tem um vídeo sendo transcrito. Espere terminar para pedir outro.');
+      return;
+    }
+    transcrevendo = true;
+    const dados = cardDataCache.get(card) || parseCardDetails(card) || {};
+    const pais = (new URLSearchParams(location.search).get('country') || '').toUpperCase();
+    showToast('Transcrevendo a fala do vídeo...', 8000);
+    safeSendMessage(
+      {
+        type: 'TRANSCREVER',
+        url: media.url,
+        nomeVideo: media.filename,
+        libraryId: dados.libraryId || '',
+        pagina: dados.pageName || dados.name || '',
+        dias: dados.daysRunning || 0,
+        texto: getCardText(card).slice(0, 1500),
+        pais
+      },
+      (resposta) => {
+        transcrevendo = false;
+        if (resposta && resposta.success) {
+          showToast(
+            resposta.temFala
+              ? `Roteiro do vídeo baixado: ${resposta.nome}`
+              : 'Esse vídeo não tem fala. O arquivo do roteiro avisa isso.',
+            6000
+          );
+        } else {
+          showToast(`Não deu para transcrever: ${(resposta && resposta.error) || 'tente de novo.'}`, 6000);
+        }
+      }
+    );
+  }
+
+  const TEXTO_DA_ETAPA = {
+    baixando: () => 'Transcrevendo: pegando o vídeo...',
+    modelo: (pct) => `Preparando o transcritor (só na primeira vez): ${pct || 0}%`,
+    ouvindo: () => 'Transcrevendo a fala do vídeo...'
+  };
+
+  try {
+    chrome.runtime.onMessage.addListener((msg) => {
+      if (!msg || msg.type !== 'MINERAI_TRANSCRICAO_STATUS') return undefined;
+      const texto = TEXTO_DA_ETAPA[msg.etapa];
+      if (texto) showToast(texto(msg.pct), 12000);
+      return undefined;
+    });
+  } catch (e) {}
 
   function escapeHtml(str) {
     if (!str) return '';
