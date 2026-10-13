@@ -82,3 +82,14 @@ test('ultimoRastreioHoje devolve a hora da medição automática mais recente de
   assert.equal(ultimoRastreioHoje([oferta({ tracked_at: `${diasAntes(1)}T10:00` })]), null);
   assert.equal(ultimoRastreioHoje([]), null);
 });
+
+import { cleanHistory as limpar } from '../src/utils/offerMeta.js';
+
+test('oferta no formato do painel (histórico limpo) não repete queda e decaindo', () => {
+  const crua = oferta({ tracked_at: `${HOJE}T09:00` }, [
+    { date: diasAntes(1), count: 20, kind: 'anunciante' },
+    { date: HOJE, count: 8, kind: 'anunciante' }
+  ]);
+  const formatada = { ...crua, history: limpar(crua.history, 3650) };
+  assert.ok(!tipos(computeAlerts([formatada], ALERT_DEFAULTS), formatada).includes('queda'));
+});

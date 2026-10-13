@@ -54,7 +54,9 @@ async function buscarBiblioteca(query) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), RASTREIO_TIMEOUT_MS);
   try {
-    const res = await fetch(`${META_LIBRARY}?${query}`, { credentials: 'include', signal: controller.signal });
+    // Leitura anônima: a Biblioteca é pública e assim nada fica ligado à
+    // conta do Facebook da pessoa.
+    const res = await fetch(`${META_LIBRARY}?${query}`, { credentials: 'omit', signal: controller.signal });
     return res.ok ? await res.text() : null;
   } catch (e) {
     return null;
@@ -65,7 +67,10 @@ async function buscarBiblioteca(query) {
 
 /**
  * Lê uma oferta na Biblioteca.
- * -> { total: number|null, ativo, pageId, pageIdConfirmado, country, bloqueio }
+ * -> { total, ativo, pageId, pageIdConfirmado, country }
+ *    ou { bloqueio }        Meta pediu captcha
+ *    ou { semRastreio }     sem ID usável, ou zero de uma página não confirmada
+ *    ou { falhaRede }       a Biblioteca não respondeu
  */
 async function lerOfertaNaBiblioteca(meta, linha) {
   const R = self.MineraiRastreio;
@@ -74,7 +79,8 @@ async function lerOfertaNaBiblioteca(meta, linha) {
   let anuncio = { pageId: '', ativo: null };
   if (libraryId) {
     const html = await buscarBiblioteca(`id=${libraryId}`);
-    if (html && R.pareceBloqueio(html)) return { bloqueio: true };
+    if (html === null) return { falhaRede: true };
+    if (R.pareceBloqueio(html)) return { bloqueio: true };
     anuncio = R.lerAnuncio(html, libraryId);
   }
 
@@ -82,31 +88,39 @@ async function lerOfertaNaBiblioteca(meta, linha) {
   const salvo = /^\d{6,}$/.test(String(linha.page_id || '')) ? String(linha.page_id) : '';
   const pageId = anuncio.pageId || conhecido || salvo;
   const pageIdConfirmado = Boolean(anuncio.pageId || conhecido);
-  if (!pageId) return { total: null, ativo: anuncio.ativo, pageId: '', pageIdConfirmado: false };
+  // Oferta cadastrada à mão sem link (page_id "4", "N/A"): não há o que ler.
+  if (!pageId) return { semRastreio: true };
 
   const contar = async (pais) => {
     const html = await buscarBiblioteca(
       `active_status=active&ad_type=all&country=${pais}&view_all_page_id=${pageId}&media_type=all`
     );
-    if (html && R.pareceBloqueio(html)) return { bloqueio: true };
+    if (html === null) return { falhaRede: true };
+    if (R.pareceBloqueio(html)) return { bloqueio: true };
     return { total: R.lerTotal(html) };
   };
 
   let country = /^(ALL|[A-Z]{2})$/.test(String(meta.country || '')) ? meta.country : '';
   let leitura = await contar(country || 'BR');
-  if (leitura.bloqueio) return { bloqueio: true };
+  if (leitura.bloqueio || leitura.falhaRede) return leitura;
+  if (leitura.total === null) return { falhaRede: true };
 
   // Oferta antiga (sem país): o zero no Brasil pode ser só porque ela roda
-  // lá fora. Com o anúncio salvo ativo, tenta o mundo todo.
-  if (!country && leitura.total === 0 && anuncio.ativo === true) {
+  // lá fora — mesmo com o criativo salvo parado. Tenta o mundo todo antes de
+  // aceitar o zero (senão uma oferta gringa viva seria dada como morta).
+  if (!country && leitura.total === 0) {
     const mundo = await contar('ALL');
-    if (mundo.bloqueio) return { bloqueio: true };
+    if (mundo.bloqueio || mundo.falhaRede) return mundo;
     if (mundo.total > 0) {
       leitura = mundo;
       country = 'ALL';
     }
   }
   if (!country && leitura.total > 0) country = 'BR';
+
+  // Zero de uma página que não deu para confirmar (ID do perfil, do card):
+  // provavelmente é o ID errado, não uma oferta morta. Não vira medição.
+  if (leitura.total === 0 && !pageIdConfirmado) return { semRastreio: true };
 
   return {
     total: leitura.total,
@@ -171,6 +185,33 @@ async function gravarMedicao(linha, leitura, hoje, token) {
   return avaliacao.eventos;
 }
 
+/**
+ * Marca que o rastreio passou pela oferta hoje sem conseguir medir (sem ID,
+ * leitura falhou). Ela vai para o fim da fila e não é tentada de novo hoje.
+ */
+async function marcarTentativa(id, hoje, token) {
+  const linha = await buscarLinhaOferta(id, token);
+  if (!linha) return;
+  const { notes, meta } = decodeNotes(linha.funnel_notes);
+  await writeOffer(
+    `${SUPABASE_URL}/rest/v1/offers?id=eq.${safeUuid(linha.id)}`,
+    'PATCH',
+    { funnel_notes: clip(encodeNotes(notes, { ...meta, track_tentativa: hoje }), 10000) },
+    token
+  );
+}
+
+/**
+ * Salva o progresso sem desfazer o liga/desliga que o popup pode ter mudado
+ * enquanto a rodada andava. Devolve o `ligado` atual.
+ */
+async function salvarProgresso(estado) {
+  const atual = await lerEstadoRastreio();
+  estado.ligado = atual.ligado;
+  await salvarEstadoRastreio(estado);
+  return estado.ligado;
+}
+
 /** Monta a fila do dia com as ofertas da pessoa. */
 async function montarFilaDoDia(userId, token, hoje) {
   const res = await fetch(
@@ -220,9 +261,11 @@ async function rastreioTick({ forcar = false, pausa = pausaPadrao } = {}) {
   rastreioRodando = true;
   try {
     let estado = await lerEstadoRastreio();
-    if (estado.ligado === false && !forcar) return;
-
     const hoje = todayIso();
+    // "Rodar agora" vale para o dia inteiro: as continuações seguem mesmo desligado.
+    const forcadoHoje = forcar || estado.forcado === hoje;
+    if (estado.ligado === false && !forcadoHoje) return;
+
     const { user, token } = await getAuthValida();
     const userId = safeUuid(user?.id);
     if (!token || !userId) {
@@ -231,7 +274,8 @@ async function rastreioTick({ forcar = false, pausa = pausaPadrao } = {}) {
     }
 
     const novoDia = estado.dia !== hoje;
-    if (!novoDia && estado.parado === 'bloqueio' && !forcar) return;
+    // Freio da Meta ou plano inativo: só tenta de novo amanhã (ou se pedirem).
+    if (!novoDia && (estado.parado === 'bloqueio' || estado.parado === 'plano') && !forcar) return;
 
     if (novoDia || forcar || !Array.isArray(estado.fila)) {
       const fila = await montarFilaDoDia(userId, token, hoje);
@@ -258,6 +302,7 @@ async function rastreioTick({ forcar = false, pausa = pausaPadrao } = {}) {
       }
     }
     estado.parado = null;
+    if (forcar) estado.forcado = hoje;
     await salvarEstadoRastreio(estado);
 
     const inicio = Date.now();
@@ -267,41 +312,48 @@ async function rastreioTick({ forcar = false, pausa = pausaPadrao } = {}) {
       const id = estado.fila[0];
       const linha = await buscarLinhaOferta(id, token);
 
-      if (linha) {
-        const meta = decodeNotes(linha.funnel_notes).meta;
-        const leitura = await lerOfertaNaBiblioteca(meta, linha);
+      try {
+        if (linha) {
+          const meta = decodeNotes(linha.funnel_notes).meta;
+          const leitura = await lerOfertaNaBiblioteca(meta, linha);
 
-        if (leitura.bloqueio) {
-          estado.parado = 'bloqueio';
-          break;
-        }
-
-        if (leitura.total === null || leitura.total === undefined) {
-          falhasSeguidas += 1;
-          if (falhasSeguidas >= RASTREIO_FALHAS_SEGUIDAS) {
+          if (leitura.bloqueio) {
             estado.parado = 'bloqueio';
             break;
           }
-        } else {
-          falhasSeguidas = 0;
-          try {
-            const eventos = await gravarMedicao(linha, leitura, hoje, token);
+
+          if (leitura.falhaRede || leitura.semRastreio) {
+            if (leitura.falhaRede) {
+              falhasSeguidas += 1;
+              if (falhasSeguidas >= RASTREIO_FALHAS_SEGUIDAS) {
+                estado.parado = 'bloqueio';
+                break;
+              }
+            }
+            await marcarTentativa(id, hoje, token);
+          } else {
+            falhasSeguidas = 0;
+            // Relê logo antes de gravar: a pessoa pode ter editado a oferta
+            // no painel enquanto a Biblioteca respondia.
+            const fresca = (await buscarLinhaOferta(id, token)) || linha;
+            const eventos = await gravarMedicao(fresca, leitura, hoje, token);
             eventos.forEach((e) => {
               if (e.tipo in estado.eventos) estado.eventos[e.tipo] += 1;
             });
-          } catch (e) {
-            if (/plano está inativo/i.test(e.message)) {
-              estado.parado = 'plano';
-              break;
-            }
-            console.warn('[Mineraí] Rastreio: não deu para gravar uma oferta:', e.message);
           }
         }
+      } catch (e) {
+        if (/plano está inativo/i.test(e.message)) {
+          estado.parado = 'plano';
+          break;
+        }
+        console.warn('[Mineraí] Rastreio: não deu para gravar uma oferta:', e.message);
       }
 
       estado.fila.shift();
       estado.feitas = (estado.feitas || 0) + 1;
-      await salvarEstadoRastreio(estado);
+      const ligado = await salvarProgresso(estado);
+      if (ligado === false && estado.forcado !== hoje) break;
       if (estado.fila.length) await pausa();
     }
 
@@ -310,10 +362,10 @@ async function rastreioTick({ forcar = false, pausa = pausaPadrao } = {}) {
         estado.terminadoEm = agoraLocal();
         avisarFimDaRodada(estado);
       }
-    } else if (!estado.parado) {
+    } else if (!estado.parado && (estado.ligado !== false || estado.forcado === hoje)) {
       chrome.alarms.create(RASTREIO_CONTINUAR, { delayInMinutes: 0.5 });
     }
-    await salvarEstadoRastreio(estado);
+    await salvarProgresso(estado);
   } catch (e) {
     console.warn('[Mineraí] Rastreio interrompido:', e.message);
   } finally {

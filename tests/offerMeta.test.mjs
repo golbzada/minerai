@@ -57,3 +57,33 @@ test('explicação da etiqueta conta que a oferta saiu do ar', () => {
   const morta = { funnel_notes: encodeNotes('', { start_date: '2026-09-01', dead_since: '2026-09-11' }) };
   assert.match(stageReason(morta), /^Saiu do ar em 11\/09, depois de 11 dias no ar\./);
 });
+
+import { cleanHistory, startDateFromForm } from '../src/utils/offerMeta.js';
+
+test('cleanHistory mantém o tipo e o limite', () => {
+  const h = cleanHistory([
+    { date: '2026-10-01', count: 3 },
+    { date: '2026-10-02', count: 9, kind: 'anunciante' },
+    { date: '2026-10-03', count: 10, kind: 'anunciante' }
+  ], 2);
+  assert.equal(h.length, 2);
+  assert.equal(h[0].kind, 'anunciante');
+  assert.equal(h[1].count, 10);
+});
+
+test('editar oferta morta sem mexer nos dias mantém a data de início', () => {
+  const meta = { start_date: '2026-09-01', dead_since: '2026-09-11' };
+  assert.equal(startDateFromForm(11, meta), '2026-09-01');
+});
+
+test('mudar os dias de oferta morta conta a partir da morte', () => {
+  const meta = { start_date: '2026-09-01', dead_since: '2026-09-11' };
+  assert.equal(startDateFromForm(20, meta), '2026-08-23');
+});
+
+test('oferta viva: mesmos dias mantêm a data; dias novos recalculam', () => {
+  const meta = { start_date: daysToStartDate(30) };
+  assert.equal(startDateFromForm(30, meta), meta.start_date);
+  assert.equal(startDateFromForm(10, meta), daysToStartDate(10));
+  assert.equal(startDateFromForm('', meta), meta.start_date);
+});

@@ -191,3 +191,33 @@ test('resumoDoRastreio descreve cada estado em português simples', () => {
   assert.equal(R.resumoDoRastreio({ ligado: true }, false, HOJE), 'Ainda não rodou hoje.');
   assert.equal(R.resumoDoRastreio({ ...base, dia: '2026-10-12' }, false, HOJE), 'Ainda não rodou hoje.');
 });
+
+// ---- Correções da revisão final ----
+
+test('base velha (mais de 7 dias) não gera escalou', () => {
+  const meta = { page_active_ads: 3, page_active_ads_at: diasAntes(30) };
+  assert.deepEqual(R.avaliarLeitura({ meta, history: [] }, leitura(20)).eventos, []);
+});
+
+test('zero na janela não vira base de escalou', () => {
+  const base = { meta: { page_active_ads: 0 }, history: anunciante([[1, 0]]) };
+  assert.deepEqual(R.avaliarLeitura(base, leitura(8)).eventos, []);
+});
+
+test('montarFila pula oferta já tentada hoje e manda as tentadas para o fim', () => {
+  const offers = [
+    { id: 'tentada-hoje', meta: { track_tentativa: HOJE } },
+    { id: 'tentada-ontem', meta: { track_tentativa: diasAntes(1) } },
+    { id: 'medida-anteontem', meta: { tracked_at: `${diasAntes(2)}T09:00` } }
+  ];
+  assert.deepEqual(R.montarFila(offers, HOJE), ['medida-anteontem', 'tentada-ontem']);
+});
+
+test('estaMedindo não trava o botão depois de pausa ou plano', () => {
+  const base = { ligado: true, dia: HOJE, fila: ['a'], terminadoEm: null };
+  assert.equal(R.estaMedindo(base, false, HOJE), true);
+  assert.equal(R.estaMedindo({ ...base, parado: 'bloqueio' }, false, HOJE), false);
+  assert.equal(R.estaMedindo({ ...base, parado: 'plano' }, false, HOJE), false);
+  assert.equal(R.estaMedindo({ ...base, dia: diasAntes(1) }, false, HOJE), false);
+  assert.equal(R.estaMedindo({ ...base, fila: [] }, true, HOJE), true);
+});

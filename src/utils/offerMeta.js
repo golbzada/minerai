@@ -186,6 +186,33 @@ export function historyEntry(date, count, kind) {
   return entry;
 }
 
+/** Histórico saneado para a interface/banco: últimas `limit` medições, com tipo. */
+export function cleanHistory(history, limit = 3650) {
+  return normalizeHistory(history)
+    .slice(-limit)
+    .map((h) => historyEntry(h.date, h.count, h.kind));
+}
+
+/**
+ * Data de início a partir do "há quantos dias está rodando" do formulário.
+ * Se a pessoa não mudou os dias, a data fica como está — senão editar o nome
+ * de uma oferta morta (dias congelados) jogava o início para depois da morte.
+ * Em oferta morta, os dias contam até a data da morte.
+ */
+export function startDateFromForm(typedDays, meta = {}) {
+  if (typedDays == null || typedDays === '') return meta.start_date || null;
+  const n = Math.max(1, parseInt(typedDays, 10) || 1);
+  if (meta.start_date && n === resolveRunningDays({}, meta)) return meta.start_date;
+
+  const dead = isoToDate(meta.dead_since);
+  if (dead) {
+    dead.setDate(dead.getDate() - (n - 1));
+    const offset = dead.getTimezoneOffset() * 60000;
+    return new Date(dead.getTime() - offset).toISOString().split('T')[0];
+  }
+  return daysToStartDate(n);
+}
+
 /** Insere ou atualiza a medição de um dia dentro do histórico. */
 export function upsertHistory(history, date, count, kind) {
   const normalized = normalizeHistory(history).filter((h) => h.date !== date);

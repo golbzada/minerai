@@ -95,8 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const estado = resposta.estado || {};
       rastreioLigado.checked = estado.ligado !== false;
       rastreioTexto.textContent = self.MineraiRastreio.resumoDoRastreio(estado, resposta.rodando, hojeLocal());
-      const medindo = resposta.rodando || (Array.isArray(estado.fila) && estado.fila.length && !estado.terminadoEm && estado.dia === hojeLocal());
-      rastreioRodar.disabled = Boolean(medindo);
+      rastreioRodar.disabled = self.MineraiRastreio.estaMedindo(estado, resposta.rodando, hojeLocal());
     });
   }
 

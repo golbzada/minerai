@@ -1003,15 +1003,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // O bridge pede a sessão da extensão para entregar ao painel se for mais nova.
-  if (message.type === 'GET_PANEL_SESSION') {
-    if (!vemDoPainel) {
-      sendResponse({ success: false, error: 'Origem não autorizada.' });
-      return true;
-    }
-    getCurrentUser().then(({ user, session }) => sendResponse({ user, session }));
-    return true;
-  }
 
   if (message.type === 'CLEAR_AUTH_USER') {
     if (!vemDoPainel) {

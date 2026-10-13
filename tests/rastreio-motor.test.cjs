@@ -25,7 +25,7 @@ const uuid = (n) => `00000000-0000-4000-8000-00000000000${n}`;
  * Monta o ambiente: ofertas no "banco", respostas da Biblioteca por anúncio e
  * por página, e o que já está guardado no chrome.storage.
  */
-function ambiente({ ofertas, anuncios = {}, paginas = {}, logado = true, estado = null }) {
+function ambiente({ ofertas, anuncios = {}, paginas = {}, logado = true, estado = null, planoInativo = false, aoBuscarPagina = null, aoGravar = null }) {
   const storage = {};
   if (logado) {
     storage.minerai_user = USER;
@@ -37,6 +37,7 @@ function ambiente({ ofertas, anuncios = {}, paginas = {}, logado = true, estado 
   const notificacoes = [];
   const alarmes = [];
   const buscasMeta = [];
+  const credenciaisMeta = [];
 
   const local = {
     get(keys, cb) {
@@ -63,16 +64,19 @@ function ambiente({ ofertas, anuncios = {}, paginas = {}, logado = true, estado 
     ok: status < 400,
     status,
     text: async () => (typeof corpo === 'string' ? corpo : JSON.stringify(corpo)),
-    json: async () => (typeof corpo === 'string' ? JSON.parse(corpo) : corpo)
+    // Cópia, como na rede de verdade: mudar a linha depois não muda o que já foi lido.
+    json: async () => JSON.parse(typeof corpo === 'string' ? corpo : JSON.stringify(corpo))
   });
 
   async function fetch(url, opcoes = {}) {
     const u = String(url);
     if (u.includes('/rest/v1/offers')) {
       if ((opcoes.method || 'GET') === 'PATCH') {
+        if (planoInativo) return resposta('new row violates row-level security policy for table "offers"', 403);
         const id = u.match(/[?&]id=eq\.([0-9a-f-]+)/)[1];
         const corpo = JSON.parse(opcoes.body);
         patches.push({ id, corpo });
+        if (aoGravar) aoGravar({ id, corpo, storage });
         const linha = ofertas.find((o) => o.id === id);
         Object.assign(linha, corpo);
         return resposta([linha]);
@@ -83,9 +87,11 @@ function ambiente({ ofertas, anuncios = {}, paginas = {}, logado = true, estado 
     }
     if (u.includes('facebook.com/ads/library/')) {
       buscasMeta.push(u);
+      credenciaisMeta.push(opcoes.credentials);
       const id = (u.match(/[?&]id=(\d+)/) || [])[1];
       if (id) return resposta(anuncios[id] ?? '<html></html>');
       const pagina = u.match(/view_all_page_id=(\d+)/)[1];
+      if (aoBuscarPagina) aoBuscarPagina({ pagina, ofertas });
       const pais = u.match(/country=([A-Z]+)/)[1];
       const valor = paginas[`${pagina}:${pais}`] ?? paginas[pagina];
       return resposta(valor === undefined ? '<html></html>' : `{"search_results_connection":{"count":${valor},"edges":[]}}`);
@@ -94,7 +100,7 @@ function ambiente({ ofertas, anuncios = {}, paginas = {}, logado = true, estado 
   }
 
   const sw = carregarScript('extension/background.js', { chrome, fetch });
-  return { sw, storage, patches, notificacoes, alarmes, buscasMeta };
+  return { sw, storage, patches, notificacoes, alarmes, buscasMeta, credenciaisMeta };
 }
 
 const anuncio = (libraryId, pageId, ativo = true) =>
@@ -210,4 +216,102 @@ test('estágio fixado à mão não muda', async () => {
   const amb = ambiente({ ofertas, anuncios: anunciosTres, paginas: { '7000001': 12 } });
   await amb.sw.rastreioTick(semPausa);
   assert.equal(amb.patches[0].corpo.status, undefined);
+});
+
+// ---- Correções da revisão final ----
+
+function semId(n) {
+  return { id: uuid(n), history: [], status: 'testing', page_id: '4', funnel_notes: notas('', { start_date: diasAntes(5) }) };
+}
+
+test('ofertas sem ID não param a rodada e vão para o fim da fila', async () => {
+  const boa = tresOfertas()[0];
+  const amb = ambiente({ ofertas: [semId(7), semId(8), semId(9), boa], anuncios: anunciosTres, paginas: paginasTres });
+  await amb.sw.rastreioTick(semPausa);
+  assert.equal(amb.storage.minerai_rastreio.parado, null);
+  const medidas = amb.patches.filter((p) => p.corpo.ads_count !== undefined);
+  assert.deepEqual(medidas.map((p) => p.id), [boa.id]);
+  const tentadas = amb.patches.filter((p) => p.corpo.ads_count === undefined);
+  assert.equal(tentadas.length, 3);
+  assert.ok(tentadas.every((p) => /"track_tentativa":"\d{4}-\d{2}-\d{2}"/.test(p.corpo.funnel_notes)));
+  assert.ok(amb.buscasMeta.every((u) => u.includes('90000100') || u.includes('7000001')));
+});
+
+test('gringa antiga com criativo parado tenta o mundo todo antes de dar zero', async () => {
+  const amb = ambiente({
+    ofertas: tresOfertas().slice(0, 1),
+    anuncios: { '90000100': anuncio('90000100', '7000001', false) },
+    paginas: { '7000001:BR': 0, '7000001:ALL': 12 }
+  });
+  await amb.sw.rastreioTick(semPausa);
+  assert.equal(amb.patches[0].corpo.ads_count, 12);
+  assert.match(amb.patches[0].corpo.funnel_notes, /"country":"ALL"/);
+  assert.doesNotMatch(amb.patches[0].corpo.funnel_notes, /dead_check/);
+});
+
+test('zero de página não confirmada não vira medição', async () => {
+  const oferta = { id: uuid(1), history: [], status: 'scaling', page_id: '123456789', funnel_notes: notas('', { start_date: diasAntes(40) }) };
+  const amb = ambiente({ ofertas: [oferta], paginas: { '123456789': 0 } });
+  await amb.sw.rastreioTick(semPausa);
+  assert.equal(amb.patches.length, 1);
+  assert.equal(amb.patches[0].corpo.ads_count, undefined);
+  assert.equal(amb.patches[0].corpo.status, undefined);
+  assert.match(amb.patches[0].corpo.funnel_notes, /track_tentativa/);
+  assert.doesNotMatch(amb.patches[0].corpo.funnel_notes, /tracked_at/);
+});
+
+test('edição feita no painel durante a leitura não é apagada', async () => {
+  const amb = ambiente({
+    ofertas: tresOfertas().slice(0, 1),
+    anuncios: anunciosTres,
+    paginas: paginasTres,
+    aoBuscarPagina: ({ ofertas }) => {
+      ofertas[0].funnel_notes = notas('anotei agora', { library_id: '90000100', start_date: diasAntes(5), fav: true });
+    }
+  });
+  await amb.sw.rastreioTick(semPausa);
+  assert.ok(amb.patches[0].corpo.funnel_notes.startsWith('anotei agora'));
+  assert.match(amb.patches[0].corpo.funnel_notes, /"fav":true/);
+});
+
+test('plano inativo para o dia inteiro, sem voltar à Biblioteca', async () => {
+  const amb = ambiente({ ofertas: tresOfertas(), anuncios: anunciosTres, paginas: paginasTres, planoInativo: true });
+  await amb.sw.rastreioTick(semPausa);
+  assert.equal(amb.storage.minerai_rastreio.parado, 'plano');
+  const antes = amb.buscasMeta.length;
+  await amb.sw.rastreioTick(semPausa);
+  assert.equal(amb.buscasMeta.length, antes);
+});
+
+test('desligar no meio da rodada para e continua desligado', async () => {
+  const amb = ambiente({
+    ofertas: tresOfertas(),
+    anuncios: anunciosTres,
+    paginas: paginasTres,
+    aoGravar: ({ storage }) => { storage.minerai_rastreio = { ...storage.minerai_rastreio, ligado: false }; }
+  });
+  await amb.sw.rastreioTick(semPausa);
+  assert.equal(amb.storage.minerai_rastreio.ligado, false);
+  assert.equal(amb.patches.length, 1);
+});
+
+test('Rodar agora com o rastreio desligado termina a rodada nas continuações', async () => {
+  const ofertas = tresOfertas();
+  const hoje = hojeLocal();
+  const amb = ambiente({
+    ofertas,
+    anuncios: anunciosTres,
+    paginas: paginasTres,
+    estado: { ligado: false, dia: hoje, fila: ofertas.map((o) => o.id), total: 3, feitas: 0, eventos: { escalou: 0, morreu: 0, decaindo: 0 }, forcado: hoje, terminadoEm: null, parado: null }
+  });
+  await amb.sw.rastreioTick(semPausa);
+  assert.equal(amb.patches.length, 3);
+  assert.ok(amb.storage.minerai_rastreio.terminadoEm);
+});
+
+test('leitura da Biblioteca é anônima (sem a conta do Facebook da pessoa)', async () => {
+  const amb = ambiente({ ofertas: tresOfertas(), anuncios: anunciosTres, paginas: paginasTres });
+  await amb.sw.rastreioTick(semPausa);
+  assert.ok(amb.credenciaisMeta.length > 0);
+  assert.ok(amb.credenciaisMeta.every((c) => c === 'omit'));
 });

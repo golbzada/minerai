@@ -197,14 +197,18 @@
     // --- Escalou / decaindo (só com leituras do anunciante; nunca na primeira)
     if (!primeira && !voltou && total > 0) {
       let valores = janela(history, date);
-      if (!valores.length && metaAntes.page_active_ads != null) {
+      // Sem leitura do anunciante na janela, vale a da mineração — só se for
+      // recente: número de meses atrás geraria "escalou" falso.
+      const idadeBase = diffDias(String(metaAntes.page_active_ads_at || ''), date);
+      if (!valores.length && metaAntes.page_active_ads != null && idadeBase >= 0 && idadeBase <= LIMITES.janelaDias) {
         valores = [Number(metaAntes.page_active_ads) || 0];
       }
 
       if (valores.length) {
         const menor = Math.min(...valores);
         const maior = Math.max(...valores);
-        if (total >= menor * LIMITES.escalouFator && total - menor >= LIMITES.escalouMin) {
+        // Base zero (oferta que voltou, leitura vazia) não serve para "escalou".
+        if (menor > 0 && total >= menor * LIMITES.escalouFator && total - menor >= LIMITES.escalouMin) {
           eventos.push({ tipo: 'escalou', data: date, de: menor, para: total });
         } else if (maior >= LIMITES.decaiBaseMin && total <= maior * LIMITES.decaiFator) {
           eventos.push({ tipo: 'decaindo', data: date, de: maior, para: total });
@@ -239,16 +243,23 @@
   // ---------------------------------------------------------------------------
   // Fila do dia
   // ---------------------------------------------------------------------------
+  /** Última vez que o rastreio passou pela oferta (mediu ou só tentou). */
+  function ultimaPassagem(meta) {
+    const medida = String((meta && meta.tracked_at) || '');
+    const tentada = String((meta && meta.track_tentativa) || '');
+    return medida > tentada ? medida : tentada;
+  }
+
   function montarFila(offers, hoje) {
     const lista = (Array.isArray(offers) ? offers : []).filter((o) => {
       const m = (o && o.meta) || {};
       if (!o || !o.id) return false;
       if (m.stage === 'descartada') return false;
-      return !String(m.tracked_at || '').startsWith(hoje);
+      // Já medida ou já tentada hoje (sem ID, leitura falhou): fica para amanhã.
+      return !ultimaPassagem(m).startsWith(hoje);
     });
 
-    const porAntiguidade = (a, b) =>
-      String((a.meta || {}).tracked_at || '').localeCompare(String((b.meta || {}).tracked_at || ''));
+    const porAntiguidade = (a, b) => ultimaPassagem(a.meta).localeCompare(ultimaPassagem(b.meta));
 
     const favoritas = lista.filter((o) => (o.meta || {}).fav === true).sort(porAntiguidade);
     const demais = lista.filter((o) => (o.meta || {}).fav !== true).sort(porAntiguidade);
@@ -261,6 +272,13 @@
   // ---------------------------------------------------------------------------
   // Texto do estado para o popup
   // ---------------------------------------------------------------------------
+  /** A rodada de hoje está andando? (trava o "Rodar agora" só nesse caso) */
+  function estaMedindo(estado, rodando, hoje) {
+    if (rodando) return true;
+    const e = estado || {};
+    return e.dia === hoje && Array.isArray(e.fila) && e.fila.length > 0 && !e.terminadoEm && !e.parado;
+  }
+
   function resumoDoRastreio(estado, rodando, hoje) {
     const e = estado || {};
     if (e.ligado === false) return 'Desligado';
@@ -285,6 +303,7 @@
 
   self.MineraiRastreio = {
     resumoDoRastreio,
+    estaMedindo,
     STAGE_DAYS,
     STAGE_BY_ADS,
     LIMITES,

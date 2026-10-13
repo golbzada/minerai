@@ -37,4 +37,11 @@ function carregarScript(relativo, extras = {}) {
   return contexto;
 }
 
-module.exports = { carregarScript, chromeFalso };
+/** Roda mais um script no mesmo contexto (como dois arquivos do mesmo content script). */
+function executarNoContexto(contexto, relativo) {
+  const caminho = path.join(RAIZ, relativo);
+  vm.runInContext(fs.readFileSync(caminho, 'utf8'), contexto, { filename: caminho });
+  return contexto;
+}
+
+module.exports = { carregarScript, chromeFalso, executarNoContexto };
