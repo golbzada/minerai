@@ -318,6 +318,12 @@ export function stageReason(offer) {
     return `Etiqueta escolhida à mão. ${daysTxt}${adsTxt ? ` e ${adsTxt}` : ''}.`;
   }
 
+  // Oferta que o rastreio diário viu morrer: os dias pararam na data da morte.
+  const morte = String(meta.dead_since || '').match(/^\d{4}-(\d{2})-(\d{2})/);
+  if (morte) {
+    return `Saiu do ar em ${morte[2]}/${morte[1]}, depois de ${days} ${days === 1 ? 'dia' : 'dias'} no ar. A etiqueta mostra até onde ela chegou.`;
+  }
+
   if (status === 'scaling' && days < STAGE_DAYS.scaling) {
     return `${daysTxt} e ${adsTxt}. Com tempo e muitos anúncios ao mesmo tempo, já conta como escalando.`;
   }

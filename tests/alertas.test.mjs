@@ -69,3 +69,16 @@ test('rótulos dos tipos novos existem', () => {
     assert.ok(ALERT_LABELS[tipo]?.label, tipo);
   }
 });
+
+import { ultimoRastreioHoje } from '../src/utils/offerExtras.js';
+
+test('ultimoRastreioHoje devolve a hora da medição automática mais recente de hoje', () => {
+  const ofertas = [
+    oferta({ tracked_at: `${HOJE}T08:05` }),
+    oferta({ tracked_at: `${HOJE}T09:12` }),
+    oferta({ tracked_at: `${diasAntes(1)}T23:50` })
+  ];
+  assert.equal(ultimoRastreioHoje(ofertas), '09:12');
+  assert.equal(ultimoRastreioHoje([oferta({ tracked_at: `${diasAntes(1)}T10:00` })]), null);
+  assert.equal(ultimoRastreioHoje([]), null);
+});

@@ -6,7 +6,7 @@
  * de funnel_notes, o mesmo lugar de start_date e library_id. Assim o painel
  * ganha as funções novas sem migração no Supabase.
  */
-import { decodeNotes, normalizeHistory, resolveRunningDays, resolveStatus } from './offerMeta.js';
+import { decodeNotes, normalizeHistory, resolveRunningDays, resolveStatus, todayIso } from './offerMeta.js';
 
 export const STAGES = [
   { key: 'radar', label: 'Radar', hint: 'Acabou de ser garimpada' },
@@ -235,6 +235,20 @@ export function computeAlerts(offers, prefs = loadAlertPrefs()) {
 
   const weight = { alta: 0, media: 1, baixa: 2 };
   return alerts.sort((a, b) => weight[a.severity] - weight[b.severity]);
+}
+
+/**
+ * Hora ('HH:MM') da medição automática mais recente de hoje, ou null.
+ * O rastreio da extensão grava `tracked_at` como 'YYYY-MM-DDTHH:MM' local.
+ */
+export function ultimoRastreioHoje(offers) {
+  const hoje = todayIso();
+  let ultimo = '';
+  (offers || []).forEach((o) => {
+    const t = String(offerMeta(o).tracked_at || '');
+    if (t.startsWith(hoje) && t > ultimo) ultimo = t;
+  });
+  return ultimo.length >= 16 ? ultimo.slice(11, 16) : null;
 }
 
 export const ALERT_LABELS = {

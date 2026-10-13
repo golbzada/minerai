@@ -4,7 +4,7 @@ import ResultModal from '../components/ResultModal';
 import { api } from '../services/api';
 import { useAppData } from '../context/AppData';
 import { navigate } from '../router';
-import { computeAlerts, ALERT_LABELS, loadAlertPrefs, saveAlertPrefs, ALERT_DEFAULTS } from '../utils/offerExtras';
+import { computeAlerts, ALERT_LABELS, loadAlertPrefs, saveAlertPrefs, ALERT_DEFAULTS, ultimoRastreioHoje } from '../utils/offerExtras';
 import { getAccess, lockedMessage } from '../utils/plan';
 import { resolveStatus } from '../utils/offerMeta';
 
@@ -32,6 +32,7 @@ export default function AlertsPage() {
   const alerts = useMemo(() => computeAlerts(offers, prefs), [offers, prefs]);
   const visible = typeFilter === 'all' ? alerts : alerts.filter((a) => a.type === typeFilter);
   const needMeasure = alerts.filter((a) => a.type === 'medicao');
+  const rastreioHora = useMemo(() => ultimoRastreioHoje(offers), [offers]);
 
   function updatePref(key, value) {
     const next = { ...prefs, [key]: Math.max(1, Number(value) || ALERT_DEFAULTS[key]) };
@@ -81,7 +82,12 @@ export default function AlertsPage() {
         <div>
           <p className="eyebrow">Alertas e rotina</p>
           <h1 className="page-title">O que pede <em>atenção.</em></h1>
-          <p className="page-sub">Calculado na hora a partir do seu acervo. Ajuste os limites abaixo do jeito que você trabalha.</p>
+          <p className="page-sub">
+            {rastreioHora
+              ? `Ofertas atualizadas automaticamente hoje às ${rastreioHora}. `
+              : 'A extensão Mineraí mede suas ofertas sozinha uma vez por dia, com o Chrome aberto. '}
+            Ajuste os limites abaixo do jeito que você trabalha.
+          </p>
         </div>
       </div>
 
@@ -89,8 +95,8 @@ export default function AlertsPage() {
         id="alertas"
         why="Avisa o que pede a sua atenção hoje, para você não perder a hora de agir numa oferta."
         steps={[
-            <><strong>Rotina de hoje</strong> lista as ofertas sem medição recente. Abra cada uma e anote os anúncios do dia.</>,
-            <>Um alerta de <strong>queda</strong> quer dizer que a oferta perdeu anúncios: pode ser sinal de que parou de vender.</>,
+            <>A extensão mede suas ofertas sozinha uma vez por dia e avisa aqui quando uma <strong>escalou</strong>, está <strong>decaindo</strong> ou <strong>morreu</strong>.</>,
+            <><strong>Rotina de hoje</strong> lista só as ofertas que o rastreio não conseguiu medir. Abra cada uma e anote os anúncios do dia.</>,
             <>Ajuste os <strong>limites</strong> (ex.: quantos dias sem medir) do jeito que você trabalha.</>
         ]}
       />

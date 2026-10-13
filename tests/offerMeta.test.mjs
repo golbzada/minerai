@@ -50,3 +50,10 @@ test('isOfferDead e deadSince leem o metadado', () => {
   assert.equal(isOfferDead(viva), false);
   assert.equal(deadSince(viva), null);
 });
+
+import { stageReason } from '../src/utils/offerMeta.js';
+
+test('explicação da etiqueta conta que a oferta saiu do ar', () => {
+  const morta = { funnel_notes: encodeNotes('', { start_date: '2026-09-01', dead_since: '2026-09-11' }) };
+  assert.match(stageReason(morta), /^Saiu do ar em 11\/09, depois de 11 dias no ar\./);
+});

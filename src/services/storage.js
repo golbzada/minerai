@@ -195,8 +195,9 @@ export const storage = {
     const existingIdx = offer.history.findIndex((h) => h.result_date === targetDate);
     if (existingIdx !== -1) {
       offer.history[existingIdx].results_count = num;
+      offer.history[existingIdx].kind = 'anunciante';
     } else {
-      offer.history.push({ result_date: targetDate, results_count: num });
+      offer.history.push({ result_date: targetDate, results_count: num, kind: 'anunciante' });
     }
 
     // Sort history chronologically

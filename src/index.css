@@ -2503,3 +2503,26 @@ h1 em {
 :root[data-theme="dark"] .star-rating:not(.readonly) .star:hover {
   color: var(--gold-light);
 }
+
+/* Oferta que o rastreio diário viu morrer (anunciante sem anúncios ativos). */
+.dead-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--danger-border);
+  border-radius: 99px;
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  font-size: 0.62rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.result-modal .field-hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
