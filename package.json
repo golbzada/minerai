@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "build:extension": "node scripts/build-extension.mjs",
+    "test": "node --test \"tests/*.test.*\"",
     "security:scan": "semgrep scan --config auto --error ."
   },
   "dependencies": {

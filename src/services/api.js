@@ -9,12 +9,13 @@ import {
   decodeNotes,
   encodeNotes,
   resolveRunningDays,
-  daysToStartDate,
   normalizeHistory,
   upsertHistory,
   historyEntry,
   classifyStatus,
-  todayIso
+  todayIso,
+  cleanHistory,
+  startDateFromForm
 } from '../utils/offerMeta';
 import { AppError, toUserError, assertOk } from '../utils/errors';
 import { safeHttpUrl, safeImageSrc, safeCreativeThumb } from '../utils/url';
@@ -77,9 +78,7 @@ function safeCount(value, fallback = 0) {
 }
 
 function safeHistory(history) {
-  return normalizeHistory(history)
-    .slice(-LIMITS.historyEntries)
-    .map((h) => historyEntry(h.date, h.count));
+  return cleanHistory(history, LIMITS.historyEntries);
 }
 
 function safeAvatar(value) {
@@ -130,7 +129,7 @@ function formatOffer(row) {
   if (!row) return row;
 
   const { notes, meta } = decodeNotes(row.funnel_notes);
-  const history = normalizeHistory(row.history).map((h) => historyEntry(h.date, h.count));
+  const history = cleanHistory(row.history);
 
   return {
     ...row,
@@ -158,8 +157,7 @@ function buildNotesField(offerData, existingMeta = {}) {
 
   // "há X dias rodando" vira data de início para a contagem andar sozinha.
   if (offerData.running_days != null && offerData.running_days !== '') {
-    const typedDays = Math.max(1, parseInt(offerData.running_days, 10) || 1);
-    startDate = daysToStartDate(typedDays);
+    startDate = startDateFromForm(offerData.running_days, { ...existingMeta, start_date: startDate });
   }
 
   const statusManual =
@@ -731,15 +729,19 @@ export const api = {
       assertOk(getErr, 'Erro ao carregar a oferta.');
       if (!offer) throw new AppError('Oferta não encontrada.', { code: 'NOT_FOUND' });
 
-      const history = upsertHistory(offer.history, date, parsedCount).slice(-LIMITS.historyEntries);
+      // A medição à mão é a mesma do rastreio diário: total do anunciante.
+      const history = upsertHistory(offer.history, date, parsedCount, 'anunciante').slice(-LIMITS.historyEntries);
       const latest = history[history.length - 1];
 
       const patch = { history, updated_at: new Date().toISOString() };
       if (latest) patch.ads_count = latest.count;
 
-      const meta = decodeNotes(offer.funnel_notes).meta;
+      const { notes, meta } = decodeNotes(offer.funnel_notes);
+      if (date === todayIso()) {
+        patch.funnel_notes = encodeNotes(notes, { ...meta, page_active_ads: parsedCount, page_active_ads_at: date });
+      }
       if (!meta.status_manual) {
-        patch.status = classifyStatus(resolveRunningDays(offer, meta));
+        patch.status = classifyStatus(resolveRunningDays(offer, meta), parsedCount);
       }
 
       const { data, error } = await supabase
@@ -779,7 +781,7 @@ export const api = {
 
       const history = normalizeHistory(offer.history)
         .filter((h) => h.date !== date)
-        .map((h) => historyEntry(h.date, h.count));
+        .map((h) => historyEntry(h.date, h.count, h.kind));
 
       const patch = { history, updated_at: new Date().toISOString() };
       if (history.length) patch.ads_count = history[history.length - 1].count;

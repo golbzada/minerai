@@ -63,7 +63,7 @@ export default function ResultModal({ offer, onClose, onSave }) {
         </label>
 
         <label className="field">
-          <span>Quantidade de Anúncios Ativos</span>
+          <span>Anúncios ativos do anunciante</span>
           <input
             type="number"
             min="0"
@@ -73,6 +73,9 @@ export default function ResultModal({ offer, onClose, onSave }) {
             onChange={(e) => setResultsCount(e.target.value)}
             placeholder="Ex: 48"
           />
+          <small className="field-hint">
+            É o "~N resultados" que aparece na página do anunciante na Biblioteca. A extensão mede isso sozinha uma vez por dia; aqui é para corrigir à mão.
+          </small>
         </label>
 
         {/* Quick Increment buttons */}

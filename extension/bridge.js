@@ -13,6 +13,66 @@
   let syncInterval = null;
   let lastSyncKey = '';
 
+  // O painel espera este sinal antes de ligar o Supabase (ver
+  // src/utils/extensaoSessao.js): assim ele já nasce com a sessão mais nova.
+  const raiz = document.documentElement;
+  if (raiz) raiz.dataset.mineraiSessao = 'aguardando';
+
+  function chaveDaSessao() {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('sb-') && key.endsWith('-auth-token')) return key;
+    }
+    return null;
+  }
+
+  // Cópia da sessão da extensão, lida direto do chrome.storage (sem acordar o
+  // service worker) e mantida em dia pelo onChanged.
+  let sessaoExtensao = null;
+
+  /**
+   * Se a extensão renovou o login enquanto o painel estava fechado (ou parado
+   * numa aba esquecida), a sessão dela é a válida: grava no localStorage do
+   * painel, que o supabase-js lê a cada uso. Sem isso o painel tentaria o
+   * refresh_token antigo e o Supabase deslogaria os dois. Síncrono de
+   * propósito: roda dentro do visibilitychange, antes do supabase-js.
+   */
+  function entregarSessaoAoPainel() {
+    try {
+      if (!sessaoExtensao || !self.MineraiSessao) return;
+      const key = chaveDaSessao();
+      const painel = key ? JSON.parse(localStorage.getItem(key)) : null;
+      if (self.MineraiSessao.compararSessoes(painel, sessaoExtensao) === 'extensao') {
+        const nova = self.MineraiSessao.mesclarSessao(painel, sessaoExtensao.session, Date.now() / 1000);
+        localStorage.setItem(key, JSON.stringify(nova));
+      }
+    } catch (e) {}
+  }
+
+  function lerSessaoDaExtensao(depois) {
+    try {
+      chrome.storage.local.get(['minerai_user', 'minerai_session'], (r) => {
+        sessaoExtensao = { user: (r && r.minerai_user) || null, session: (r && r.minerai_session) || null };
+        depois();
+      });
+    } catch (e) {
+      depois();
+    }
+  }
+
+  try {
+    chrome.storage.onChanged.addListener((mudancas, area) => {
+      if (area !== 'local' || !sessaoExtensao) return;
+      if (mudancas.minerai_user) sessaoExtensao.user = mudancas.minerai_user.newValue || null;
+      if (mudancas.minerai_session) sessaoExtensao.session = mudancas.minerai_session.newValue || null;
+      entregarSessaoAoPainel();
+    });
+  } catch (e) {}
+
+  // Aba que estava escondida voltando: o supabase-js renova a sessão nesse
+  // instante. Na captura, este ouvinte roda antes e entrega a sessão nova.
+  window.addEventListener('visibilitychange', entregarSessaoAoPainel, true);
+
   function safeSendMessage(payload) {
     if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id) {
       if (syncInterval) clearInterval(syncInterval);
@@ -95,7 +155,13 @@
     }
   }
 
-  syncSession();
+  // Primeiro recebe a sessão da extensão (se for mais nova), depois avisa a
+  // extensão do que ficou no painel.
+  lerSessaoDaExtensao(() => {
+    entregarSessaoAoPainel();
+    if (raiz) raiz.dataset.mineraiSessao = 'pronta';
+    syncSession();
+  });
 
   /**
    * Toda mensagem aceita precisa ter sido postada por esta mesma janela, nesta

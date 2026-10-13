@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Chart from './Chart';
 import StarRating from './StarRating';
 import StageBadge from './StageBadge';
-import { normalizeHistory, resolveRunningDays, resolvePageActiveAds, decodeNotes } from '../utils/offerMeta';
+import { normalizeHistory, resolveRunningDays, resolvePageActiveAds, decodeNotes, deadSince } from '../utils/offerMeta';
 import { safeHttpUrl, safeImageSrc, safeCreativeThumb } from '../utils/url';
 import { getExtras, STAGES } from '../utils/offerExtras';
 
@@ -147,6 +147,11 @@ export default function OfferCard({
           <div>
             <div className="badge-row">
               <StageBadge offer={offer} />
+              {deadSince(offer) && (
+                <span className="dead-tag" title="O rastreio diário viu o anunciante sem nenhum anúncio ativo">
+                  fora do ar desde {deadSince(offer).slice(8, 10)}/{deadSince(offer).slice(5, 7)}
+                </span>
+              )}
               {!readOnly && extras.stage !== 'radar' && (
                 <span className={`stage-badge stage-${extras.stage}`} title="Coluna na esteira">{stageLabel}</span>
               )}

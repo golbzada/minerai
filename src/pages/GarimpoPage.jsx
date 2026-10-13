@@ -379,7 +379,7 @@ export default function GarimpoPage({ query, onExport }) {
         steps={[
             <>Instale a extensão (menu <strong>Extensão</strong>), abra a Biblioteca de Anúncios e clique em <strong>Minerar oferta</strong> no anúncio que chamou atenção. Ele aparece aqui.</>,
             <>Separe por assunto com as <strong>tabs</strong> (ex.: Emagrecimento, Gringa) e use os filtros para achar rápido.</>,
-            <>Todo dia, clique em <strong>+ Hoje</strong> no card para anotar quantos anúncios a oferta tem. É assim que você vê se ela está crescendo.</>,
+            <>A extensão mede sozinha, uma vez por dia, quantos anúncios cada oferta tem: é assim que você vê se ela está crescendo. O <strong>+ Hoje</strong> serve para corrigir à mão.</>,
             <>Clique na <strong>★</strong> das melhores. Elas vão para <strong>Favoritos</strong>, onde você monta o seu funil.</>
         ]}
       />

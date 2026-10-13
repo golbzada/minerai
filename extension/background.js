@@ -19,6 +19,10 @@ const DASHBOARD_URLS = [
   'http://localhost:5173'
 ];
 
+// Regras da sessão compartilhada com o painel (quem tem a mais nova) e regras
+// do rastreio diário (histórico, estágio, leitura da Biblioteca).
+importScripts('sessao-regras.js', 'rastreio-regras.js');
+
 // ==============================================================================
 // SANEAMENTO DO QUE SAI DO CONTENT SCRIPT
 // ==============================================================================
@@ -93,6 +97,11 @@ function safePageSlug(value) {
   return PAGE_SLUG_RE.test(str) ? str : '';
 }
 
+function safeCountry(value) {
+  const str = String(value || '').trim().toUpperCase();
+  return /^(ALL|[A-Z]{2})$/.test(str) ? str : '';
+}
+
 function safeUuid(value) {
   const str = String(value || '').trim();
   return UUID_RE.test(str) ? str : '';
@@ -112,6 +121,11 @@ function sanitizeOfferData(source) {
     adsCount: safeCount(src.adsCount, 1),
     // Total de anúncios ativos do anunciante; 0 = não foi possível ler.
     pageActiveAds: safeCount(src.pageActiveAds, 0),
+    // ID real da página (lido do próprio anúncio), país da busca e se o
+    // anúncio salvo estava no ar: base do rastreio diário.
+    pageIdReal: safeDigits(src.pageIdReal),
+    country: safeCountry(src.country),
+    adActive: typeof src.adActive === 'boolean' ? src.adActive : null,
     pageId: safeDigits(src.pageId),
     pageSlug: safePageSlug(src.pageSlug),
     libraryId: safeDigits(src.libraryId),
@@ -300,33 +314,40 @@ function encodeNotes(notes, meta) {
   return clean ? `${clean}\n\n${block}` : block;
 }
 
+/**
+ * Anotações + bloco de metadados cabendo em `max` caracteres. Corta as
+ * anotações, nunca o bloco: cortar o bloco apagava favorito, data de início,
+ * etapa da esteira e tudo mais que vive nele.
+ */
+function notasComMeta(notes, meta, max = 10000) {
+  const completo = encodeNotes(notes, meta);
+  if (completo.length <= max) return completo;
+  const soBloco = encodeNotes('', meta);
+  const espaco = Math.max(0, max - soBloco.length - 2);
+  const texto = decodeNotes(notes).notes.slice(0, espaco).trim();
+  return texto ? encodeNotes(texto, meta) : soBloco;
+}
+
 function todayIso() {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0];
 }
 
-function historyEntry(date, count) {
-  const n = Math.max(0, Number(count) || 0);
-  // Grava nas duas nomenclaturas para o painel e os backups antigos lerem.
-  return { date, count: n, ads_count: n, result_date: date, results_count: n };
-}
+// historyEntry/upsertHistory vêm de rastreio-regras.js (com `kind`).
+const { historyEntry, upsertHistory } = self.MineraiRastreio;
 
-function upsertHistory(history, date, count) {
-  const byDate = new Map();
-
-  (Array.isArray(history) ? history : []).forEach((item) => {
-    if (!item || typeof item !== 'object') return;
-    const raw = item.date || item.result_date;
-    if (!raw) return;
-    const key = String(raw).slice(0, 10);
-    byDate.set(key, Number(item.count ?? item.ads_count ?? item.results_count ?? 0) || 0);
-  });
-
-  byDate.set(date, Math.max(0, Number(count) || 0));
-
-  return Array.from(byDate.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([d, c]) => historyEntry(d, c));
+/**
+ * A medição que a mineração grava: o total de anúncios ativos do anunciante.
+ * Sem esse número (leitura falhou), a mineração não mexe no histórico — o
+ * "N anúncios usam este criativo" não é mais medição.
+ */
+function medicaoDaMineracao(history, offerData, today) {
+  const total = Number(offerData.pageActiveAds) || 0;
+  if (total <= 0) return {};
+  return {
+    ads_count: total,
+    history: upsertHistory(history, today, total, self.MineraiRastreio.KIND)
+  };
 }
 
 // ==============================================================================
@@ -516,6 +537,9 @@ function buildMeta(offerData, existing) {
     ...(offerData.pageActiveAds > 0
       ? { page_active_ads: offerData.pageActiveAds, page_active_ads_at: todayIso() }
       : {}),
+    ...(offerData.pageIdReal ? { page_id_real: offerData.pageIdReal } : {}),
+    ...(offerData.country ? { country: offerData.country } : {}),
+    ...(typeof offerData.adActive === 'boolean' ? { ad_active: offerData.adActive } : {}),
     source: 'extension',
     captured_at: new Date().toISOString()
   };
@@ -647,13 +671,11 @@ async function snapshotCreative(url) {
  */
 async function updateExistingOffer(existing, offerData, token) {
   const today = todayIso();
-  const adsCount = safeCount(offerData.adsCount, 1);
   const userNotes = decodeNotes(existing.funnel_notes).notes;
 
   const patch = {
-    ads_count: adsCount,
-    history: upsertHistory(existing.history, today, adsCount),
-    funnel_notes: clip(encodeNotes(userNotes, buildMeta(offerData, existing)), 10000),
+    ...medicaoDaMineracao(existing.history, offerData, today),
+    funnel_notes: notasComMeta(userNotes, buildMeta(offerData, existing)),
     updated_at: new Date().toISOString()
   };
 
@@ -744,12 +766,14 @@ async function saveCapturedOffer(rawOfferData) {
     library_url: offerData.libraryUrl,
     landing_page: offerData.landingPage,
     affiliate_link: '',
-    funnel_notes: clip(encodeNotes(offerData.notes, meta), 10000),
+    funnel_notes: notasComMeta(offerData.notes, meta),
     status: offerData.status,
     niche: offerData.niche || 'Outros',
     avatar_url: await resolveAvatar(offerData),
     creative_thumb: await snapshotCreative(offerData.creativeUrl),
-    history: [historyEntry(today, adsCount)],
+    history: [],
+    // Com o total do anunciante, ele vira o número da oferta e a 1ª medição.
+    ...medicaoDaMineracao([], offerData, today),
     updated_at: new Date().toISOString()
   };
 
@@ -980,11 +1004,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: false, error: 'Origem não autorizada.' });
       return true;
     }
-    setStoredUser(user, session).then(() => {
-      sendResponse({ success: true });
+    // Se a extensão já renovou e o painel ainda tem a sessão antiga, guardar
+    // a antiga perderia o refresh_token válido. O bridge entrega a nova ao
+    // painel no próximo ciclo.
+    getCurrentUser().then((guardada) => {
+      if (!self.MineraiSessao.aceitarDoPainel(guardada, user, session)) {
+        sendResponse({ success: false, error: 'Sessão mais antiga que a da extensão.' });
+        return;
+      }
+      setStoredUser(user, session).then(() => sendResponse({ success: true }));
     });
     return true;
   }
+
 
   if (message.type === 'CLEAR_AUTH_USER') {
     if (!vemDoPainel) {
@@ -1057,3 +1089,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 });
+
+// Rastreio diário das ofertas (alarmes, fila, leitura da Biblioteca).
+importScripts('rastreio.js');

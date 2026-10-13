@@ -132,6 +132,13 @@ function mergeMeta(offer, extra) {
 export function resolveRunningDays(offer, meta) {
   const info = mergeMeta(offer, meta);
 
+  // Oferta morta: os dias param na data em que ela saiu do ar.
+  const start = isoToDate(info.start_date);
+  const dead = isoToDate(info.dead_since);
+  if (start && dead) {
+    return Math.max(1, Math.round((dead - start) / DAY_MS) + 1);
+  }
+
   const fromStart = startDateToDays(info.start_date);
   if (fromStart) return fromStart;
 
@@ -157,8 +164,12 @@ export function normalizeHistory(history) {
     const rawDate = item.date || item.result_date || item.created_at;
     const date = typeof rawDate === 'string' ? rawDate.slice(0, 10) : todayIso();
     const count = Number(item.count ?? item.ads_count ?? item.results_count ?? 0);
+    const entry = { date, count: isNaN(count) ? 0 : count };
+    // `kind: 'anunciante'` = total de anúncios do anunciante (rastreio diário).
+    // Sem `kind` = medição antiga ("anúncios usam este criativo").
+    if (typeof item.kind === 'string') entry.kind = item.kind;
 
-    byDate.set(date, { date, count: isNaN(count) ? 0 : count });
+    byDate.set(date, entry);
   });
 
   return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
@@ -168,23 +179,52 @@ export function normalizeHistory(history) {
  * Grava a entrada com as duas nomenclaturas para continuar compatível com
  * qualquer parte do app (e com backups antigos) que ainda leia o formato velho.
  */
-export function historyEntry(date, count) {
+export function historyEntry(date, count, kind) {
   const n = Math.max(0, Number(count) || 0);
-  return { date, count: n, ads_count: n, result_date: date, results_count: n };
+  const entry = { date, count: n, ads_count: n, result_date: date, results_count: n };
+  if (kind) entry.kind = kind;
+  return entry;
+}
+
+/** Histórico saneado para a interface/banco: últimas `limit` medições, com tipo. */
+export function cleanHistory(history, limit = 3650) {
+  return normalizeHistory(history)
+    .slice(-limit)
+    .map((h) => historyEntry(h.date, h.count, h.kind));
+}
+
+/**
+ * Data de início a partir do "há quantos dias está rodando" do formulário.
+ * Se a pessoa não mudou os dias, a data fica como está — senão editar o nome
+ * de uma oferta morta (dias congelados) jogava o início para depois da morte.
+ * Em oferta morta, os dias contam até a data da morte.
+ */
+export function startDateFromForm(typedDays, meta = {}) {
+  if (typedDays == null || typedDays === '') return meta.start_date || null;
+  const n = Math.max(1, parseInt(typedDays, 10) || 1);
+  if (meta.start_date && n === resolveRunningDays({}, meta)) return meta.start_date;
+
+  const dead = isoToDate(meta.dead_since);
+  if (dead) {
+    dead.setDate(dead.getDate() - (n - 1));
+    const offset = dead.getTimezoneOffset() * 60000;
+    return new Date(dead.getTime() - offset).toISOString().split('T')[0];
+  }
+  return daysToStartDate(n);
 }
 
 /** Insere ou atualiza a medição de um dia dentro do histórico. */
-export function upsertHistory(history, date, count) {
+export function upsertHistory(history, date, count, kind) {
   const normalized = normalizeHistory(history).filter((h) => h.date !== date);
-  normalized.push({ date, count: Math.max(0, Number(count) || 0) });
+  normalized.push({ date, count: Math.max(0, Number(count) || 0), kind });
   return normalized
     .sort((a, b) => a.date.localeCompare(b.date))
-    .map((h) => historyEntry(h.date, h.count));
+    .map((h) => historyEntry(h.date, h.count, h.kind));
 }
 
 /**
  * Faixas de tempo que definem o estágio da oferta.
- * Precisa ficar igual ao STAGE_DAYS de extension/content.js.
+ * Precisa ficar igual ao STAGE_DAYS de extension/rastreio-regras.js.
  *
  * O "N anúncios usam este criativo" do card NÃO entra aqui: ele não é o total
  * de anúncios ativos da oferta. O que entra é o total do ANUNCIANTE, lido na
@@ -198,15 +238,27 @@ export const STAGE_DAYS = {
 
 /**
  * Exceção pela quantidade de anúncios ativos do anunciante: com tempo E
- * volume, a oferta já conta como Escalando antes dos 30 dias. Só sobe a
- * etiqueta, nunca rebaixa. Muitos anúncios em poucos dias pode ser só teste,
- * por isso toda regra exige um mínimo de dias.
- * Precisa ficar igual ao STAGE_BY_ADS de extension/content.js.
+ * volume, a oferta já conta como Escalando antes dos 30 dias. A regra de
+ * anúncios só sobe a etiqueta em relação ao tempo; como o total é medido todo
+ * dia, a etiqueta pode voltar a cair se os anúncios caírem. Muitos anúncios em
+ * poucos dias pode ser só teste, por isso toda regra exige um mínimo de dias.
+ * Precisa ficar igual ao STAGE_BY_ADS de extension/rastreio-regras.js.
  */
 export const STAGE_BY_ADS = [
   { days: 15, ads: 10 }, // 15+ dias e 10+ anúncios -> Escalando
   { days: 20, ads: 7 }   // 20+ dias e 7+ anúncios  -> Escalando
 ];
+
+/** Data em que o rastreio viu a oferta morrer (anunciante sem anúncios), ou null. */
+export function deadSince(offer) {
+  const value = mergeMeta(offer).dead_since;
+  return typeof value === 'string' && value ? value : null;
+}
+
+/** A oferta saiu do ar (o rastreio confirmou em duas leituras). */
+export function isOfferDead(offer) {
+  return deadSince(offer) !== null;
+}
 
 /** Total de anúncios ativos do anunciante lido na mineração, ou null. */
 export function resolvePageActiveAds(offer, meta) {
@@ -292,6 +344,12 @@ export function stageReason(offer) {
 
   if (meta.status_manual && offer?.status) {
     return `Etiqueta escolhida à mão. ${daysTxt}${adsTxt ? ` e ${adsTxt}` : ''}.`;
+  }
+
+  // Oferta que o rastreio diário viu morrer: os dias pararam na data da morte.
+  const morte = String(meta.dead_since || '').match(/^\d{4}-(\d{2})-(\d{2})/);
+  if (morte) {
+    return `Saiu do ar em ${morte[2]}/${morte[1]}, depois de ${days} ${days === 1 ? 'dia' : 'dias'} no ar. A etiqueta mostra até onde ela chegou.`;
   }
 
   if (status === 'scaling' && days < STAGE_DAYS.scaling) {

@@ -1149,30 +1149,9 @@
   // total de anúncios ativos da oferta. O que entra é o total do ANUNCIANTE,
   // lido só na hora de minerar (ver fetchPageActiveAds).
   //
-  // Para ajustar as faixas, mude só estes números (e os de src/utils/offerMeta.js):
-  const STAGE_DAYS = {
-    pre_scaling: 10,  // 1 a 9 dias   -> Teste
-    scaling: 30,      // 10 a 29 dias -> Pré-escala
-    winner: 150       // 30 a 149     -> Escalando | 150+ -> Vencedor
-  };
-
-  // Exceção: com tempo E muitos anúncios ativos do anunciante, já conta como
-  // Escalando antes dos 30 dias. Muito anúncio em poucos dias pode ser só
-  // teste, por isso toda regra exige um mínimo de dias.
-  const STAGE_BY_ADS = [
-    { days: 15, ads: 10 }, // 15+ dias e 10+ anúncios -> Escalando
-    { days: 20, ads: 7 }   // 20+ dias e 7+ anúncios  -> Escalando
-  ];
-
-  function classifyStage(daysRunning, pageActiveAds) {
-    const days = Number(daysRunning) || 0;
-    const ads = Number(pageActiveAds) || 0;
-    if (days >= STAGE_DAYS.winner) return 'winner';
-    if (days >= STAGE_DAYS.scaling) return 'scaling';
-    if (ads && STAGE_BY_ADS.some((r) => days >= r.days && ads >= r.ads)) return 'scaling';
-    if (days >= STAGE_DAYS.pre_scaling) return 'pre_scaling';
-    return 'testing';
-  }
+  // As faixas e a regra vivem em rastreio-regras.js (carregado antes deste
+  // arquivo pelo manifest) e precisam bater com src/utils/offerMeta.js.
+  const { STAGE_DAYS, STAGE_BY_ADS, classifyStage } = self.MineraiRastreio;
 
   // Explicação das etiquetas para quem está começando (tooltip da pílula).
   const STAGE_TIP =
@@ -1198,53 +1177,51 @@
   }
 
   /**
-   * ID REAL da página do anunciante, lido do próprio anúncio.
-   * O ID que sai do card muitas vezes é o do perfil (ou nem existe, quando a
-   * página tem apelido) e a Biblioteca devolve zero anúncios para ele.
-   * Confirmado na Biblioteca real: o HTML de `?id=<anúncio>` traz
-   * `"page_id":"N"` junto do `"ad_archive_id"` daquele anúncio.
+   * ID REAL da página do anunciante e se o anúncio ainda está no ar, lidos do
+   * próprio anúncio (`?id=<anúncio>`). O ID que sai do card muitas vezes é o
+   * do perfil (ou nem existe, quando a página tem apelido) e a Biblioteca
+   * devolve zero anúncios para ele.
    */
-  async function fetchRealPageId(libraryId) {
-    if (!/^\d{6,}$/.test(String(libraryId || ''))) return '';
+  async function fetchAnuncio(libraryId) {
+    if (!/^\d{6,}$/.test(String(libraryId || ''))) return { pageId: '', ativo: null };
     const html = await fetchLibraryHtml(`id=${libraryId}`);
-    const at = html.indexOf(`"ad_archive_id":"${libraryId}"`);
-    if (at < 0) return '';
-    const after = html.slice(at, at + 4000).match(/"page_id":"(\d{6,})"/);
-    if (after) return after[1];
-    const before = html.slice(Math.max(0, at - 4000), at).match(/"page_id":"(\d{6,})"/g);
-    return before ? before[before.length - 1].replace(/\D/g, '') : '';
+    return self.MineraiRastreio.lerAnuncio(html, libraryId);
   }
 
   /**
    * Total de anúncios ATIVOS do anunciante (o "~27 resultados" da página dele
    * na Biblioteca). Roda só no clique de Minerar, uma leitura por oferta, para
-   * não travar a Biblioteca.
+   * não travar a Biblioteca. Mesma origem: não precisa de aba nem permissão.
    *
-   * Confirmado na Biblioteca real: o HTML da página do anunciante já vem com
-   * `"search_results_connection":{"count":N` e N bate com o "~N resultados"
-   * da tela. Mesma origem, então não precisa de aba nem de permissão nova.
-   *
-   * Devolve null quando não deu para ler — a mineração segue sem o número.
+   * Devolve também o ID real da página, se o anúncio salvo está ativo e o país
+   * usado — o rastreio diário reaproveita os três. `total` null = não deu para
+   * ler; a mineração segue sem o número.
    */
   async function fetchPageActiveAds(libraryId, cardPageId) {
+    // Mesmo país da busca atual: na tab "Gringa" o total do Brasil daria zero.
+    const country =
+      (new URLSearchParams(location.search).get('country') || 'ALL').replace(/[^A-Z]/gi, '').toUpperCase() || 'ALL';
+    const vazio = { total: null, pageId: '', ativo: null, country };
     try {
-      const pageId = (await fetchRealPageId(libraryId)) || cardPageId;
-      if (!/^\d{6,}$/.test(String(pageId || ''))) return null;
+      const anuncio = await fetchAnuncio(libraryId);
+      const pageId = anuncio.pageId || cardPageId;
+      if (!/^\d{6,}$/.test(String(pageId || ''))) return { ...vazio, ativo: anuncio.ativo };
 
-      // Mesmo país da busca atual: na tab "Gringa" o total do Brasil daria zero.
-      const country =
-        (new URLSearchParams(location.search).get('country') || 'ALL').replace(/[^A-Z]/gi, '') || 'ALL';
       const html = await fetchLibraryHtml(
         `active_status=active&ad_type=all&country=${encodeURIComponent(country)}` +
           `&view_all_page_id=${pageId}&media_type=all`
       );
-      const match = html.match(/"search_results_connection":\{"count":(\d+)/);
-      const n = match ? parseInt(match[1], 10) : 0;
+      const n = self.MineraiRastreio.lerTotal(html) || 0;
       // Zero com um anúncio ativo na tela = ID de página errado. Melhor sem número.
-      return n > 0 ? n : null;
+      return {
+        total: n > 0 ? n : null,
+        pageId: anuncio.pageId,
+        ativo: anuncio.ativo,
+        country
+      };
     } catch (e) {
       console.warn('[Mineraí Extensão] Não deu para ler os anúncios do anunciante:', e.message);
-      return null;
+      return vazio;
     }
   }
 
@@ -1977,11 +1954,14 @@
 
     // Total de anúncios do anunciante: entra no estágio (regra de exceção) e
     // fica guardado na oferta. Se falhar, salva do mesmo jeito.
-    const pageActiveAds = await fetchPageActiveAds(cardData.libraryId, cardData.pageId);
+    const leitura = await fetchPageActiveAds(cardData.libraryId, cardData.pageId);
     const data = {
       ...cardData,
-      pageActiveAds: pageActiveAds || 0,
-      status: classifyStage(cardData.daysRunning, pageActiveAds)
+      pageActiveAds: leitura.total || 0,
+      pageIdReal: leitura.pageId || '',
+      country: leitura.country || '',
+      adActive: typeof leitura.ativo === 'boolean' ? leitura.ativo : null,
+      status: classifyStage(cardData.daysRunning, leitura.total)
     };
 
     btn.innerHTML = `${icon('relogio')}<span class="minerai-btn-text">Salvando...</span>`;

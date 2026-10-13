@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Mineraí",
-  "version": "1.26.0",
+  "version": "1.27.0",
   "description": "Garimpagem e inteligência de anúncios de alta performance direto da Biblioteca de Anúncios Meta.",
   "icons": {
     "16": "icons/icon16.png",
@@ -29,6 +29,7 @@
         "https://ads.meta.com/ads/library/*"
       ],
       "js": [
+        "rastreio-regras.js",
         "content.js"
       ],
       "css": [
@@ -42,18 +43,22 @@
         "https://mineraiofertas.vercel.app/*"
       ],
       "js": [
+        "sessao-regras.js",
         "bridge.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_start"
     }
   ],
   "permissions": [
     "storage",
     "downloads",
     "scripting",
-    "offscreen"
+    "offscreen",
+    "alarms",
+    "notifications"
   ],
   "host_permissions": [
+    "https://www.facebook.com/*",
     "https://graph.facebook.com/*",
     "https://*.fbcdn.net/*",
     "https://*.cdninstagram.com/*",

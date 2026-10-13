@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Icon from './Icons';
 import StarRating from './StarRating';
 import StageBadge from './StageBadge';
-import { resolveRunningDays } from '../utils/offerMeta';
+import { resolveRunningDays, isOfferDead } from '../utils/offerMeta';
 import { safeImageSrc, safeCreativeThumb } from '../utils/url';
 import { getExtras } from '../utils/offerExtras';
 
@@ -52,6 +52,7 @@ export default function FunilCard({
           <span className="fcard-name">{offer.name}</span>
           <span className="fcard-meta">
             <StageBadge offer={offer} variant="text" />
+            {isOfferDead(offer) && <span className="dead-tag">fora do ar</span>}
             <span>· {days} {days === 1 ? 'dia' : 'dias'}</span>
             {!dense && <span>· {ads} {ads === 1 ? 'anúncio' : 'anúncios'}</span>}
           </span>
