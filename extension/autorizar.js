@@ -86,10 +86,9 @@
       // considerar que não houve gesto do usuário e recusar o pedido.
       concedida = await chrome.permissions.request(TODOS_OS_SITES);
     } catch (e) {
-      mostrar(
-        '<strong>Não deu para pedir a autorização.</strong><br>' +
-        (e.message || 'Erro inesperado.') +
-        '<br><br>Recarregue esta aba e tente de novo.',
+      // A mensagem do erro entra como texto, nunca como HTML.
+      mostrarNos(
+        [['strong', 'Não deu para pedir a autorização.'], ['br'], e.message || 'Erro inesperado.', ['br'], ['br'], 'Recarregue esta aba e tente de novo.'],
         'erro'
       );
       return;
