@@ -108,3 +108,42 @@ test('anunciante visto pela primeira vez hoje continua novo numa segunda rodada 
   const r = R.montarAchados(anuncios, { hoje: HOJE, vistos: { 999999: HOJE }, primeiraRodada: false });
   assert.equal(r.achados[0].novo, true);
 });
+
+// ---- Gringa x Brasil ----
+
+test('urls de checagem no Brasil: anunciante e site (frase exata)', () => {
+  assert.equal(R.urlAnuncianteNoPais('123456789', 'BR'), 'active_status=active&ad_type=all&country=BR&view_all_page_id=123456789&media_type=all');
+  assert.equal(
+    R.urlSiteNoPais('shop.pipitea.com', 'BR'),
+    'active_status=active&ad_type=all&country=BR&q=%22shop.pipitea.com%22&search_type=keyword_exact_phrase&media_type=all'
+  );
+});
+
+test('dominioDoLink ignora rede social e encurtador', () => {
+  assert.equal(R.dominioDoLink('https://www.loja.com/x?y=1'), 'loja.com');
+  assert.equal(R.dominioDoLink('http://instagram.com/perfil'), '');
+  assert.equal(R.dominioDoLink('https://l.facebook.com/l.php?u=x'), '');
+  assert.equal(R.dominioDoLink('https://wa.me/5511999'), '');
+  assert.equal(R.dominioDoLink('lixo'), '');
+});
+
+test('escolherParaChecarBrasil: novas escalando primeiro, sem repetir checagem da semana, até o limite', () => {
+  const achados = [
+    { pageId: '1', posicao: 1, novaEscalando: false },
+    { pageId: '2', posicao: 2, novaEscalando: true },
+    { pageId: '3', posicao: 3, novaEscalando: true },
+    { pageId: '4', posicao: 4, novaEscalando: false }
+  ];
+  const cache = { 3: { data: '2026-10-10' }, 4: { data: '2026-10-01' } };
+  assert.deepEqual(R.escolherParaChecarBrasil(achados, cache, HOJE, 2), ['2', '1']);
+  assert.deepEqual(R.escolherParaChecarBrasil(achados, cache, HOJE, 8), ['2', '1', '4']);
+});
+
+test('aplicarBrasil junta o resultado e marca janela aberta', () => {
+  const achados = [{ pageId: '1' }, { pageId: '2' }, { pageId: '3' }];
+  const cache = { 1: { data: HOJE, anunciante: 0, site: 0 }, 2: { data: HOJE, anunciante: 3, site: 9 } };
+  const r = R.aplicarBrasil(achados, cache);
+  assert.deepEqual(r[0].brasil, { anunciante: 0, site: 0, janela: true, data: HOJE });
+  assert.equal(r[1].brasil.janela, false);
+  assert.equal(r[2].brasil, undefined);
+});

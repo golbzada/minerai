@@ -148,5 +148,74 @@
     return { achados, vistos: novosVistos };
   }
 
-  self.MineraiRadar = { RADAR, urlDaBusca, extrairAnuncios, montarAchados, diffDias };
+  // ---------------------------------------------------------------------------
+  // Gringa x Brasil: oferta escalando lá fora já roda aqui?
+  // Dois sinais, lidos na Biblioteca do Brasil: anúncios ativos do MESMO
+  // anunciante e anúncios que citam o MESMO site (frase exata).
+  // ---------------------------------------------------------------------------
+  const BRASIL_VALIDADE_DIAS = 7;
+  const SITES_SEM_OFERTA = /(^|\.)(facebook\.com|fb\.me|fb\.com|instagram\.com|wa\.me|whatsapp\.com|m\.me|messenger\.com|linktr\.ee|youtube\.com|youtu\.be|tiktok\.com)$/i;
+
+  /** Domínio do site de vendas (vazio para rede social, WhatsApp, encurtador). */
+  function dominioDoLink(link) {
+    try {
+      const host = new URL(link).hostname.replace(/^www\./, '').toLowerCase();
+      return host && !SITES_SEM_OFERTA.test(host) ? host : '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function paisValido(pais) {
+    const p = String(pais || '').toUpperCase();
+    return /^(ALL|[A-Z]{2})$/.test(p) ? p : 'BR';
+  }
+
+  function urlAnuncianteNoPais(pageId, pais) {
+    return `active_status=active&ad_type=all&country=${paisValido(pais)}&view_all_page_id=${String(pageId).replace(/\D/g, '')}&media_type=all`;
+  }
+
+  function urlSiteNoPais(dominio, pais) {
+    return (
+      `active_status=active&ad_type=all&country=${paisValido(pais)}` +
+      `&q=${encodeURIComponent(`"${dominio}"`)}&search_type=keyword_exact_phrase&media_type=all`
+    );
+  }
+
+  /** Quem checar no Brasil hoje: sem checagem da última semana, novas escalando primeiro. */
+  function escolherParaChecarBrasil(achados, cache, hoje, max = 8) {
+    return (achados || [])
+      .filter((a) => {
+        const c = (cache || {})[a.pageId];
+        return !(c && c.data && diffDias(c.data, hoje) < BRASIL_VALIDADE_DIAS);
+      })
+      .sort((a, b) => (Number(b.novaEscalando) - Number(a.novaEscalando)) || (a.posicao - b.posicao))
+      .slice(0, max)
+      .map((a) => a.pageId);
+  }
+
+  /** Junta o que se sabe do Brasil em cada achado. Janela aberta = ninguém roda aqui. */
+  function aplicarBrasil(achados, cache) {
+    return (achados || []).map((a) => {
+      const c = (cache || {})[a.pageId];
+      if (!c) return a;
+      const anunciante = c.anunciante ?? null;
+      const site = c.site ?? null;
+      return { ...a, brasil: { anunciante, site, janela: anunciante === 0 && (site === 0 || site === null), data: c.data } };
+    });
+  }
+
+  self.MineraiRadar = {
+    RADAR,
+    BRASIL_VALIDADE_DIAS,
+    urlDaBusca,
+    extrairAnuncios,
+    montarAchados,
+    diffDias,
+    dominioDoLink,
+    urlAnuncianteNoPais,
+    urlSiteNoPais,
+    escolherParaChecarBrasil,
+    aplicarBrasil
+  };
 })();

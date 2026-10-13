@@ -276,6 +276,17 @@
       .map((o) => o.id);
   }
 
+  /**
+   * Gringa x Brasil no acervo: oferta minerada lá fora (país ≠ BR/ALL) tem a
+   * presença no Brasil conferida uma vez por semana.
+   */
+  function precisaChecarBrasil(meta, hoje) {
+    const pais = String((meta && meta.country) || '');
+    if (!/^[A-Z]{2}$/.test(pais) || pais === 'BR') return false;
+    if (!meta.brasil_at) return true;
+    return diffDias(meta.brasil_at, hoje) >= 7;
+  }
+
   // ---------------------------------------------------------------------------
   // Texto do estado para o popup
   // ---------------------------------------------------------------------------
@@ -310,6 +321,7 @@
   }
 
   self.MineraiRastreio = {
+    precisaChecarBrasil,
     resumoDoRastreio,
     estaMedindo,
     STAGE_DAYS,
