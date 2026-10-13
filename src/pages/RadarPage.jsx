@@ -9,6 +9,7 @@ import { classifyStatus, todayIso } from '../utils/offerMeta';
 import { getAccess, lockedMessage } from '../utils/plan';
 import { filtrarAchados, ofertaDoAchado, variacaoNicho, dominioDe, avisoDoRadar } from '../utils/radar';
 import { safeHttpUrl } from '../utils/url';
+import { textoBrasil } from '../utils/gringa';
 
 const PAISES = [
   { valor: 'BR', nome: 'Brasil' },
@@ -23,9 +24,9 @@ const FILTROS_KEY = 'minerai_radar_filtros';
 
 function lerFiltros() {
   try {
-    return { soNovas: true, esconderAcervo: true, ...(JSON.parse(localStorage.getItem(FILTROS_KEY) || '{}')) };
+    return { soNovas: true, esconderAcervo: true, soJanelas: false, ...(JSON.parse(localStorage.getItem(FILTROS_KEY) || '{}')) };
   } catch (e) {
-    return { soNovas: true, esconderAcervo: true };
+    return { soNovas: true, esconderAcervo: true, soJanelas: false };
   }
 }
 
@@ -134,6 +135,7 @@ export default function RadarPage() {
   const aviso = avisoDoRadar(estado, hoje);
   const buscas = estado.buscas || [];
   const resultados = estado.resultados || {};
+  const temGringa = buscas.some((b) => b.pais !== 'BR' && b.pais !== 'ALL');
   const ultimaRodada = useMemo(
     () => buscas.map((b) => (resultados[b.id] || {}).rodadoEm).filter(Boolean).sort().pop() || '',
     [buscas, resultados]
@@ -203,6 +205,12 @@ export default function RadarPage() {
                   <input type="checkbox" checked={filtros.esconderAcervo} onChange={() => mudarFiltro('esconderAcervo')} />
                   Esconder as que já estão no acervo
                 </label>
+                {temGringa && (
+                  <label className="radar-filtro" title="Ofertas de buscas de fora do Brasil que ninguém roda aqui ainda">
+                    <input type="checkbox" checked={filtros.soJanelas} onChange={() => mudarFiltro('soJanelas')} />
+                    Só janelas abertas no Brasil
+                  </label>
+                )}
                 <button type="button" className="gbtn" onClick={rodarAgora} disabled={estado.rodando}>
                   {estado.rodando ? 'Rodando...' : 'Rodar agora'}
                 </button>
@@ -225,7 +233,8 @@ export default function RadarPage() {
 
           {buscas.map((b) => {
             const r = resultados[b.id];
-            const lista = r ? filtrarAchados(r.achados, offers, filtros) : [];
+            const gringa = b.pais !== 'BR' && b.pais !== 'ALL';
+            const lista = r ? filtrarAchados(r.achados, offers, { ...filtros, soJanelas: gringa && filtros.soJanelas }) : [];
             return (
               <section key={b.id} className="radar-busca">
                 <header className="radar-busca-head">
@@ -259,11 +268,17 @@ export default function RadarPage() {
                           <span className="status-badge" style={{ color: cfg.color, backgroundColor: cfg.bg, borderColor: cfg.border }}>{cfg.label}</span>
                           {a.novo && <span className="radar-novo">Novo no radar</span>}
                           {a.noAcervo && <span className="radar-acervo">Já no acervo</span>}
+                          {textoBrasil(a.brasil)?.janela && <span className="janela-tag">Janela aberta no Brasil</span>}
                         </div>
                         <h3 title={a.pageName}>{a.pageName || dominioDe(link) || 'Anunciante'}</h3>
                         <p className="radar-numeros">
                           {a.dias} {a.dias === 1 ? 'dia' : 'dias'} no ar · {a.copias} {a.copias === 1 ? 'anúncio' : 'anúncios'} com este criativo · {a.posicao}º mais visto
                         </p>
+                        {gringa && (
+                          <p className={`radar-brasil ${textoBrasil(a.brasil)?.janela ? 'janela' : ''}`}>
+                            {textoBrasil(a.brasil)?.texto || 'Brasil: ainda não conferido'}
+                          </p>
+                        )}
                         {a.texto && <p className="radar-texto">{a.texto}</p>}
                         <div className="radar-card-acoes">
                           <a className="mini-btn" href={`https://www.facebook.com/ads/library/?id=${a.libraryId}`} target="_blank" rel="noopener noreferrer">Ver anúncio</a>

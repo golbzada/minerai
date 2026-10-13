@@ -5,6 +5,7 @@ import StageBadge from './StageBadge';
 import { normalizeHistory, resolveRunningDays, resolvePageActiveAds, decodeNotes, deadSince } from '../utils/offerMeta';
 import { safeHttpUrl, safeImageSrc, safeCreativeThumb } from '../utils/url';
 import { getExtras, STAGES } from '../utils/offerExtras';
+import { brasilDaOferta, textoBrasil } from '../utils/gringa';
 
 export default function OfferCard({
   offer,
@@ -147,6 +148,11 @@ export default function OfferCard({
           <div>
             <div className="badge-row">
               <StageBadge offer={offer} />
+              {textoBrasil(brasilDaOferta(offer))?.janela && (
+                <span className="janela-tag" title="Escalando lá fora e ninguém roda no Brasil ainda (conferido pelo rastreio)">
+                  Janela aberta no Brasil
+                </span>
+              )}
               {deadSince(offer) && (
                 <span className="dead-tag" title="O rastreio diário viu o anunciante sem nenhum anúncio ativo">
                   fora do ar desde {deadSince(offer).slice(8, 10)}/{deadSince(offer).slice(5, 7)}

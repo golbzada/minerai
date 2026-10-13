@@ -77,3 +77,14 @@ test('avisoDoRadar só mostra a pausa da Meta se for de hoje', () => {
   assert.equal(avisoDoRadar({ parado: 'falha', paradoEm: '2026-10-13' }, '2026-10-13'), 'A Biblioteca não respondeu agora. O Radar tenta de novo mais tarde.');
   assert.equal(avisoDoRadar({}, '2026-10-13'), '');
 });
+
+test('filtro de janelas abertas no Brasil', () => {
+  const lista = [
+    achado({ pageId: 'a', libraryId: 'a', brasil: { anunciante: 0, site: 0, janela: true } }),
+    achado({ pageId: 'b', libraryId: 'b', brasil: { anunciante: 3, site: 1, janela: false } }),
+    achado({ pageId: 'c', libraryId: 'c' })
+  ];
+  const r = filtrarAchados(lista, [], { soNovas: false, esconderAcervo: false, soJanelas: true });
+  assert.deepEqual(r.map((a) => a.pageId), ['a']);
+  assert.equal(filtrarAchados(lista, [], { soNovas: false, esconderAcervo: false, soJanelas: false }).length, 3);
+});

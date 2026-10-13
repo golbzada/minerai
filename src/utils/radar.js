@@ -30,10 +30,11 @@ export function jaNoAcervo(achado, offers) {
 }
 
 /** Aplica os filtros da página e marca quem já está no acervo. */
-export function filtrarAchados(achados, offers, { soNovas = true, esconderAcervo = true } = {}) {
+export function filtrarAchados(achados, offers, { soNovas = true, esconderAcervo = true, soJanelas = false } = {}) {
   return (achados || [])
     .map((a) => ({ ...a, noAcervo: jaNoAcervo(a, offers) }))
-    .filter((a) => (!soNovas || a.novaEscalando) && (!esconderAcervo || !a.noAcervo));
+    .filter((a) => (!soNovas || a.novaEscalando) && (!esconderAcervo || !a.noAcervo))
+    .filter((a) => !soJanelas || (a.brasil && a.brasil.janela === true));
 }
 
 /** Oferta pronta para `api.createOffer` a partir de um achado do Radar. */

@@ -744,3 +744,29 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- Gringa x Brasil ---------- */
+.janela-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--st-scaling-bd);
+  border-radius: 99px;
+  background: var(--st-scaling-bg);
+  color: var(--st-scaling-fg);
+  font-size: 0.62rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.radar-brasil {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.radar-brasil.janela,
+.brasil-janela {
+  color: var(--st-scaling-tx);
+}
