@@ -25,7 +25,7 @@ function montar({ painel, extensao }) {
     runtime: {
       id: 'ext',
       lastError: undefined,
-      sendMessage: (msg, cb) => { enviadas.push(msg); if (cb) cb({ success: true }); },
+      sendMessage: (msg, cb) => { enviadas.push(msg); if (cb) cb({ success: true, eco: msg.type }); },
       getManifest: () => ({ version: '0' })
     },
     storage: {
@@ -33,10 +33,11 @@ function montar({ painel, extensao }) {
       onChanged: { addListener: (fn) => mudancas.push(fn) }
     }
   };
+  const postadas = [];
   const window = {
     location: { origin: 'https://mineraiofertas.vercel.app' },
     addEventListener: (tipo, fn, captura) => ouvintes.push({ tipo, fn, captura }),
-    postMessage() {}
+    postMessage: (dado) => postadas.push(dado)
   };
   const document = { documentElement: { dataset: {} } };
   const ctx = carregarScript('extension/sessao-regras.js', {
@@ -44,7 +45,11 @@ function montar({ painel, extensao }) {
   });
   executarNoContexto(ctx, 'extension/bridge.js');
   const lerPainel = () => JSON.parse(guardado[CHAVE]);
-  return { ctx, document, lerPainel, ouvintes, mudancas, enviadas };
+  /** Simula o painel postando uma mensagem para a própria janela. */
+  function painelPosta(data) {
+    ouvintes.filter((o) => o.tipo === 'message').forEach((o) => o.fn({ origin: window.location.origin, source: window, data }));
+  }
+  return { ctx, document, lerPainel, ouvintes, mudancas, enviadas, postadas, painelPosta };
 }
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -80,4 +85,26 @@ test('painel mais novo continua avisando a extensão', async () => {
   await esperar(30);
   assert.ok(b.enviadas.some((m) => m.type === 'SET_AUTH_USER' && m.session.refresh_token === 'r-painel-500'));
   assert.ok(!b.enviadas.some((m) => m.type === 'GET_PANEL_SESSION'));
+});
+
+test('pedido do Radar vai para a extensão e a resposta volta ao painel', async () => {
+  const b = montar({ painel: painelSessao(100), extensao: ext(100) });
+  await esperar(30);
+  b.painelPosta({ type: 'MINERAI_RADAR', id: 'r1', pedido: { type: 'RADAR_LISTAR' } });
+  await esperar(10);
+  assert.ok(b.enviadas.some((m) => m.type === 'RADAR_LISTAR'));
+  const volta = b.postadas.find((p) => p.type === 'MINERAI_RADAR_RESPOSTA' && p.id === 'r1');
+  assert.ok(volta);
+  assert.equal(volta.resposta.eco, 'RADAR_LISTAR');
+});
+
+test('o painel não consegue mandar outro tipo de mensagem pelo Radar', async () => {
+  const b = montar({ painel: painelSessao(100), extensao: ext(100) });
+  await esperar(30);
+  const antes = b.enviadas.length;
+  b.painelPosta({ type: 'MINERAI_RADAR', id: 'r2', pedido: { type: 'SET_AUTH_USER', user: { id: 'x' } } });
+  await esperar(10);
+  assert.equal(b.enviadas.length, antes);
+  const volta = b.postadas.find((p) => p.id === 'r2');
+  assert.equal(volta.resposta.success, false);
 });
