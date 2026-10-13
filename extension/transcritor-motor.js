@@ -77,7 +77,10 @@ function carregar(semGpu, aoProgresso) {
           })
         : await pipeline('automatic-speech-recognition', MODELO, { ...opcoes, device: 'wasm', dtype: 'q8' });
       return { asr, gpu };
-    })();
+    })().catch((e) => {
+      carregando = null; // falhou: o próximo pedido tenta carregar de novo
+      throw e;
+    });
   }
   return carregando;
 }

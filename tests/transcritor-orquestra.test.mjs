@@ -154,3 +154,34 @@ test('parado por um tempo, o motor é encerrado (libera a memória do computador
   assert.equal(criados.length, 2, 'depois de encerrado, um motor novo é criado');
   orquestra.encerrar();
 });
+
+test('placa e processador falharam (ex.: internet caiu no download): os próximos vídeos tentam a placa de novo', async () => {
+  const quebraNoProcessador = (msg, motor) => motor.responder({ tipo: 'erro', gpu: false, mensagem: 'Failed to fetch' });
+  const { criarMotor, criados } = fabrica(quebraNaPlaca, quebraNoProcessador, ok);
+  const orquestra = criarOrquestra({ criarMotor, limites: LIMITES });
+  await assert.rejects(orquestra.ouvir(SOM, OPCOES), /Failed to fetch/);
+  await orquestra.ouvir(SOM, OPCOES);
+  assert.equal(criados[2].recebidos[0].semGpu, false);
+  orquestra.encerrar();
+});
+
+test('placa que trava antes de começar a ouvir (só o teto pega): os próximos vídeos vão para o processador', async () => {
+  const mudo = () => {};
+  const { criarMotor, criados } = fabrica(mudo, ok);
+  const orquestra = criarOrquestra({ criarMotor, limites: { ...LIMITES, tetoMs: 60 } });
+  await assert.rejects(orquestra.ouvir(SOM, OPCOES), /demorou demais/);
+  await orquestra.ouvir(SOM, OPCOES);
+  assert.equal(criados[1].recebidos[0].semGpu, true);
+  orquestra.encerrar();
+});
+
+test('a segunda tentativa só tem o tempo que sobrou do teto (a fila não fica presa o dobro)', async () => {
+  const quebraTarde = (msg, motor) => setTimeout(() => motor.responder({ tipo: 'erro', gpu: true, mensagem: 'submit quebrado' }), 80);
+  const mudo = () => {};
+  const { criarMotor } = fabrica(quebraTarde, mudo);
+  const orquestra = criarOrquestra({ criarMotor, limites: { ...LIMITES, tetoMs: 120 } });
+  const inicio = Date.now();
+  await assert.rejects(orquestra.ouvir(SOM, OPCOES), /demorou demais/);
+  assert.ok(Date.now() - inicio < 190, `levou ${Date.now() - inicio} ms`);
+  orquestra.encerrar();
+});

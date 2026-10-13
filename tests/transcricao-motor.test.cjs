@@ -184,3 +184,28 @@ test('texto do anúncio com acentos escapados e quebra de linha também serve pa
   await amb.mensagem(pedido({ pais: 'US' }), BIBLIOTECA);
   assert.equal(amb.enviadosOffscreen[0].idioma, 'portuguese');
 });
+
+test('frase em português do próprio código não ganha pontuação dobrada; endereço da extensão não entra no detalhe', async () => {
+  const casos = [
+    ['O motor do transcritor parou.', /^[^()]*$/],
+    ['TypeError: x is not a function at chrome-extension://abcdef/vendor/transformers.min.js:1:2', /^(?!.*extension:\/\/).*TypeError: x is not a function/]
+  ];
+  for (const [mensagem, esperado] of casos) {
+    const amb = ambiente();
+    await amb.mensagem(pedido(), BIBLIOTECA);
+    const { id, meta } = amb.enviadosOffscreen[0];
+    await amb.mensagem({ type: 'MINERAI_TRANSCRICAO_FIM', id, meta, error: mensagem }, OFFSCREEN);
+    const { erro } = amb.paraAbas.pop().msg;
+    assert.match(erro, esperado);
+    assert.doesNotMatch(erro, /\.\)|\.\./);
+  }
+});
+
+test('nome reservado casa com o endereço do jeito que o Chrome escreve', async () => {
+  const amb = ambiente();
+  const cru = 'https://video.fbel6-1.fna.fbcdn.net/v/a b.mp4?x=1';
+  await amb.mensagem({ type: 'DOWNLOAD_MEDIA', url: cru, filename: 'minerai_Loja_9.mp4' }, BIBLIOTECA);
+  const nomes = [];
+  amb.determinantes.forEach((fn) => fn({ url: new URL(cru).href }, (s) => nomes.push(s && s.filename)));
+  assert.deepEqual(nomes, ['minerai_Loja_9.mp4']);
+});

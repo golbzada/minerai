@@ -30,13 +30,18 @@ let transcricaoSeq = 0;
 function erroLegivel(mensagem) {
   const m = String(mensagem || '');
   // Frases que o próprio transcritor já escreve em português.
-  if (/baixar o vídeo|grande demais|demorou demais/i.test(m)) return m;
+  if (/baixar o vídeo|grande demais|demorou demais|motor do transcritor parou|falha ao transcrever/i.test(m)) return m;
   if (/memory|out of memory|allocation/i.test(m)) return 'faltou memória no computador. Feche algumas abas e tente de novo.';
   if (/message port closed|receiving end does not exist|could not establish connection/i.test(m)) {
     return 'o transcritor não respondeu. Atualize a página e tente de novo.';
   }
   if (/network|fetch|failed to fetch|load/i.test(m)) return 'a internet falhou ao baixar o transcritor. Tente de novo.';
-  const detalhe = m.replace(/https?:\/\/\S+/g, '').replace(/\s+/g, ' ').trim().slice(0, 90);
+  const detalhe = m
+    .replace(/[a-z-]+:\/\/\S+/gi, '') // endereços (vídeo, arquivos da extensão) só ocupam espaço
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 90)
+    .replace(/[\s.]+$/, '');
   return `algo deu errado no transcritor${detalhe ? ` (${detalhe})` : ''}. Tente de novo.`;
 }
 

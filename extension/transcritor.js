@@ -33,9 +33,10 @@ const LIMITES = {
   // Depois que o modelo carregou e começou a ouvir: placa de vídeo é rápida
   // (vídeo de 7 min em menos de 1 min); passou disso, ela travou.
   vigiaMs: (gpu, duracao) => (gpu ? 60 + duracao : 120 + 4 * duracao) * 1000,
-  // Teto de cada tentativa, contando o download do modelo na primeira vez.
-  // Abaixo dos 15 min em que a aba desiste de esperar.
-  tetoMs: 14 * 60 * 1000,
+  // Prazo do vídeo inteiro (as duas tentativas), contando o download do
+  // modelo na primeira vez. Com os até 2 min para baixar o vídeo, fica abaixo
+  // dos 15 min em que a aba desiste de esperar.
+  tetoMs: 12 * 60 * 1000,
   ociosoMs: 5 * 60 * 1000 // sem uso: encerra o motor e devolve a memória
 };
 
@@ -48,8 +49,9 @@ function motorPadrao() {
 /**
  * Quem conversa com o motor (worker) do Whisper. Placa de vídeo que dá erro,
  * trava ou derruba o worker: o motor é descartado e o mesmo áudio é ouvido
- * de novo num motor novo, só no processador. Depois disso, os próximos vídeos
- * já vão direto para o processador.
+ * de novo num motor novo, só no processador. Se lá deu certo (ou se a placa
+ * travou até o prazo acabar), os próximos vídeos já vão direto para o
+ * processador.
  */
 export function criarOrquestra({ criarMotor = motorPadrao, limites = LIMITES } = {}) {
   let motor = null;
@@ -62,11 +64,11 @@ export function criarOrquestra({ criarMotor = motorPadrao, limites = LIMITES } =
     motor = null;
   }
 
-  function tentar(som, opcoes, aoProgresso) {
+  function tentar(som, opcoes, aoProgresso, soProcessador, prazoMs) {
     if (!motor) motor = criarMotor();
     const atual = motor;
     return new Promise((resolve, reject) => {
-      let naPlaca = !semGpu;
+      let naPlaca = !soProcessador;
       let vigia = null;
       let acabou = false;
       const terminar = (erro, saida, { refazer = true } = {}) => {
@@ -81,13 +83,19 @@ export function criarOrquestra({ criarMotor = motorPadrao, limites = LIMITES } =
           return;
         }
         // Motor que falhou não é reaproveitado: pode ter ficado estragado.
-        if (motor === atual) encerrar();
+        atual.terminate();
+        if (motor === atual) motor = null;
         erro.naPlaca = naPlaca && refazer;
         reject(erro);
       };
-      // Estourou o teto: outra tentativa passaria do tempo em que a aba espera.
-      const teto = setTimeout(() => terminar(new Error(DEMOROU), null, { refazer: false }), limites.tetoMs);
-      atual.onerror = (e) => terminar(new Error((e && e.message) || 'O motor do transcritor parou.'));
+      // Acabou o prazo: não há tempo para outra tentativa. Se estava na placa,
+      // ela travou (ainda carregando, antes do vigia existir).
+      const teto = setTimeout(() => {
+        const erro = new Error(DEMOROU);
+        erro.placaTravou = naPlaca;
+        terminar(erro, null, { refazer: false });
+      }, prazoMs);
+      atual.onerror = (e) => terminar(new Error((e && e.message) || 'O motor do transcritor parou. Tente de novo.'));
       atual.onmessage = (evento) => {
         const m = evento.data || {};
         if (m.tipo === 'progresso') aoProgresso?.(m.progresso);
@@ -98,28 +106,36 @@ export function criarOrquestra({ criarMotor = motorPadrao, limites = LIMITES } =
         } else if (m.tipo === 'pronto') terminar(null, m.saida);
         else if (m.tipo === 'erro') {
           if (typeof m.gpu === 'boolean') naPlaca = m.gpu;
-          terminar(new Error(m.mensagem || 'Falha ao transcrever.'));
+          terminar(new Error(m.mensagem || 'Falha ao transcrever. Tente de novo.'));
         }
       };
-      atual.postMessage({ tipo: 'ouvir', audio: som.audio, opcoes, semGpu });
+      atual.postMessage({ tipo: 'ouvir', audio: som.audio, opcoes, semGpu: soProcessador });
     });
   }
 
   async function ouvir(som, opcoes, aoProgresso) {
     clearTimeout(ocioso);
-    let saida;
+    // Um prazo só para o vídeo: a segunda tentativa usa o que sobrou.
+    const prazo = Date.now() + limites.tetoMs;
     try {
-      saida = await tentar(som, opcoes, aoProgresso);
-    } catch (e) {
-      if (!e.naPlaca) throw e;
-      console.warn('[Mineraí] Placa de vídeo falhou no transcritor; refazendo no processador:', e.message);
-      semGpu = true;
-      saida = await tentar(som, opcoes, aoProgresso);
+      try {
+        return await tentar(som, opcoes, aoProgresso, semGpu, limites.tetoMs);
+      } catch (e) {
+        if (e.placaTravou) semGpu = true;
+        if (!e.naPlaca) throw e;
+        const resta = prazo - Date.now();
+        if (resta <= 0) throw new Error(DEMOROU);
+        console.warn('[Mineraí] Placa de vídeo falhou no transcritor; refazendo no processador:', e.message);
+        const saida = await tentar(som, opcoes, aoProgresso, true, resta);
+        // Só fica no processador se lá deu certo: falha dos dois (a internet
+        // caiu no download do modelo, por exemplo) não é culpa da placa.
+        semGpu = true;
+        return saida;
+      }
     } finally {
       clearTimeout(ocioso);
       if (motor) ocioso = setTimeout(encerrar, limites.ociosoMs);
     }
-    return saida;
   }
 
   return { ouvir, encerrar };
