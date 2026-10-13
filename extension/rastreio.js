@@ -392,7 +392,13 @@ chrome.runtime.onInstalled.addListener(agendarRastreio);
 chrome.runtime.onStartup.addListener(agendarRastreio);
 
 chrome.alarms.onAlarm.addListener((alarme) => {
-  if (alarme.name === RASTREIO_ALARME || alarme.name === RASTREIO_CONTINUAR) rastreioTick();
+  if (alarme.name === RASTREIO_ALARME) {
+    // Primeiro as ofertas salvas, depois as buscas do Radar (cada um sabe se
+    // já rodou hoje).
+    rastreioTick().then(() => (typeof radarTick === 'function' ? radarTick() : undefined));
+  } else if (alarme.name === RASTREIO_CONTINUAR) {
+    rastreioTick();
+  }
 });
 
 chrome.notifications.onClicked.addListener((id) => {
