@@ -29,6 +29,7 @@
         "https://ads.meta.com/ads/library/*"
       ],
       "js": [
+        "rastreio-regras.js",
         "content.js"
       ],
       "css": [
