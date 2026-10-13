@@ -109,6 +109,38 @@ test('erro no transcritor chega na aba em português, sem download', async () =>
   const aviso = amb.paraAbas.pop();
   assert.equal(aviso.msg.etapa, 'erro');
   assert.doesNotMatch(aviso.msg.erro, /message port/);
+  assert.match(aviso.msg.erro, /não respondeu/);
+});
+
+test('erro desconhecido mostra um detalhe técnico curto (para dar para investigar pelo print)', async () => {
+  const amb = ambiente();
+  await amb.mensagem(pedido(), BIBLIOTECA);
+  const { id, meta } = amb.enviadosOffscreen[0];
+  const tecnico = `RuntimeError: Aborted(Assertion failed) ${'x'.repeat(300)}`;
+  await amb.mensagem({ type: 'MINERAI_TRANSCRICAO_FIM', id, meta, error: tecnico }, OFFSCREEN);
+  const { erro } = amb.paraAbas.pop().msg;
+  assert.match(erro, /algo deu errado no transcritor/);
+  assert.match(erro, /RuntimeError: Aborted\(Assertion failed\)/);
+  assert.ok(erro.length < 200, `mensagem longa demais: ${erro.length}`);
+});
+
+test('erros que o próprio transcritor já escreve em português chegam como estão', async () => {
+  for (const mensagem of ['Vídeo grande demais para transcrever.', 'O transcritor demorou demais neste vídeo. Tente de novo.']) {
+    const amb = ambiente();
+    await amb.mensagem(pedido(), BIBLIOTECA);
+    const { id, meta } = amb.enviadosOffscreen[0];
+    await amb.mensagem({ type: 'MINERAI_TRANSCRICAO_FIM', id, meta, error: mensagem }, OFFSCREEN);
+    assert.equal(amb.paraAbas.pop().msg.erro, mensagem);
+  }
+});
+
+test('vídeo baixado pelo botão sai com o nome da Mineraí, não com o nome cru do Facebook', async () => {
+  const amb = ambiente();
+  const r = await amb.mensagem({ type: 'DOWNLOAD_MEDIA', url: VIDEO, filename: 'minerai_Loja_X_123.mp4' }, BIBLIOTECA);
+  assert.equal(r.success, true);
+  const nomes = [];
+  amb.determinantes.forEach((fn) => fn({ url: VIDEO }, (s) => nomes.push(s && s.filename)));
+  assert.deepEqual(nomes, ['minerai_Loja_X_123.mp4']);
 });
 
 test('fim vindo de fora do documento oculto é ignorado', async () => {

@@ -22,13 +22,22 @@ const BOM = '\uFEFF'; // para o Bloco de Notas abrir os acentos certos
 
 let transcricaoSeq = 0;
 
-/** Erros técnicos (em inglês, do Chrome ou do motor) viram uma frase simples. */
+/**
+ * Erros técnicos (em inglês, do Chrome ou do motor) viram uma frase simples.
+ * Erro desconhecido leva um pedaço da mensagem original entre parênteses:
+ * sem ele, o print do cliente não diz o que aconteceu.
+ */
 function erroLegivel(mensagem) {
   const m = String(mensagem || '');
-  if (/baixar o vídeo/i.test(m)) return m;
+  // Frases que o próprio transcritor já escreve em português.
+  if (/baixar o vídeo|grande demais|demorou demais/i.test(m)) return m;
   if (/memory|out of memory|allocation/i.test(m)) return 'faltou memória no computador. Feche algumas abas e tente de novo.';
+  if (/message port closed|receiving end does not exist|could not establish connection/i.test(m)) {
+    return 'o transcritor não respondeu. Atualize a página e tente de novo.';
+  }
   if (/network|fetch|failed to fetch|load/i.test(m)) return 'a internet falhou ao baixar o transcritor. Tente de novo.';
-  return 'algo deu errado no transcritor. Tente de novo.';
+  const detalhe = m.replace(/https?:\/\/\S+/g, '').replace(/\s+/g, ' ').trim().slice(0, 90);
+  return `algo deu errado no transcritor${detalhe ? ` (${detalhe})` : ''}. Tente de novo.`;
 }
 
 /** Texto do anúncio direto da Biblioteca (o do card vem misturado com os rótulos da página). */

@@ -1082,12 +1082,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
     }
     if (chrome.downloads && chrome.downloads.download) {
+      const nome = nomeValido ? nomePedido : `anuncio_${Date.now()}.${url.includes('.mp4') ? 'mp4' : 'jpg'}`;
+      // Com o ouvinte de nomes (onDeterminingFilename) ligado, o Chrome ignora
+      // o `filename` abaixo e salvava o vídeo com o nome cru do Facebook.
+      reservarNome(url, nome);
       chrome.downloads.download({
         url,
-        filename: nomeValido ? nomePedido : `anuncio_${Date.now()}.${url.includes('.mp4') ? 'mp4' : 'jpg'}`,
+        filename: nome,
         saveAs: false
       }, (downloadId) => {
         if (chrome.runtime?.lastError) {
+          nomesPendentes.delete(url);
           sendResponse({ success: false, error: chrome.runtime.lastError.message });
         } else {
           sendResponse({ success: true, downloadId });
