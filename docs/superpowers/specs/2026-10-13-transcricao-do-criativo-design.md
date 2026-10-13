@@ -29,10 +29,16 @@ No botão **Baixar mídia** da barra da extensão na Biblioteca, quando o anúnc
 - Usa a placa de vídeo (WebGPU) quando o Chrome tiver; senão, o processador.
 - O áudio é tirado do vídeo no próprio documento oculto (decodificação do
   Chrome) e convertido para 16 kHz.
-- Divisão do roteiro (regras puras, testadas): gancho = trechos que começam
-  antes de 3 s (ou a primeira frase); chamada final = do primeiro trecho com
-  frase de ação ("clique", "link", "garanta", "shop now"...) nos últimos 40%
-  do vídeo, ou os últimos 8 s; o resto é desenvolvimento.
+- Divisão do roteiro (regras puras, testadas): gancho = trechos que terminam
+  até 3,5 s (ou a primeira frase; fala sem pontuação é cortada pelas palavras
+  dos primeiros segundos); chamada final = do primeiro trecho com oferta ou
+  frase de ação ("oferta", "clique", "link", "garanta", "shop now"...) nos
+  últimos 40% do vídeo, ou os últimos 8 s; o resto é desenvolvimento.
+- Idioma: texto do anúncio lido na Biblioteca (sem os rótulos da página) +
+  país da busca para desempatar. Sem idioma o Whisper traduzia para o inglês.
+- Fluxo: o service worker não segura pedido longo; o documento oculto põe
+  os vídeos numa fila e avisa o fim por mensagem. Placa de vídeo que falha
+  no meio volta para o processador; o modelo sai da memória após 5 min parado.
 - Vídeo sem fala: o `.txt` diz que não há fala para transcrever.
 - Imagem: não muda nada.
 

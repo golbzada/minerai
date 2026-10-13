@@ -804,13 +804,23 @@ const MODELAR_ESPERA_MS = 3500;
 // O Chrome ignora o `filename` quando o download vem de um data: URI e salva
 // como "download.zip". Este evento é a forma oficial de a extensão mandar no
 // nome — por isso o arquivo vinha sem o domínio.
-let nomePendente = null;
+// Cada download reserva o nome pelo próprio endereço: com um só "nome
+// pendente", dois downloads ao mesmo tempo (roteiro + vídeo, dois roteiros)
+// trocavam de nome entre si. A reserva expira em 2 minutos.
+const nomesPendentes = new Map(); // url -> { nome, ate }
+
+function reservarNome(url, nome) {
+  nomesPendentes.set(url, { nome, ate: Date.now() + 120000 });
+}
 
 if (chrome.downloads?.onDeterminingFilename) {
   chrome.downloads.onDeterminingFilename.addListener((item, sugerir) => {
-    if (nomePendente) {
-      sugerir({ filename: nomePendente, conflictAction: 'uniquify' });
-      nomePendente = null;
+    const agora = Date.now();
+    nomesPendentes.forEach((r, url) => { if (r.ate < agora) nomesPendentes.delete(url); });
+    const reserva = nomesPendentes.get(item.url);
+    if (reserva) {
+      nomesPendentes.delete(item.url);
+      sugerir({ filename: reserva.nome, conflictAction: 'uniquify' });
       return;
     }
     sugerir();
@@ -854,11 +864,11 @@ async function empacotar(dados, url) {
 
 /** Baixa o zip pela URL de Blob do documento oculto e libera a memória depois. */
 function baixarPacote(blobUrl, nomeArquivo) {
-  nomePendente = nomeArquivo;
+  reservarNome(blobUrl, nomeArquivo);
   return new Promise((resolve, reject) => {
     chrome.downloads.download({ url: blobUrl, filename: nomeArquivo, saveAs: false }, (id) => {
       if (chrome.runtime.lastError || id === undefined) {
-        nomePendente = null;
+        nomesPendentes.delete(blobUrl);
         reject(new Error(chrome.runtime.lastError?.message || 'O Chrome recusou o download.'));
         return;
       }

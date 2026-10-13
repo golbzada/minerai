@@ -2079,55 +2079,70 @@
   // TRANSCRIÇÃO DO CRIATIVO: depois de baixar um vídeo, sai o roteiro em .txt
   // (gancho, desenvolvimento, chamada final e prompt para a IA).
   // ============================================================================
+  // Um vídeo por vez por aba. A trava sempre se solta: no aviso de pronto ou
+  // de erro, se a extensão sumir no meio, ou depois de 15 minutos.
   let transcrevendo = false;
+  let travaDaTranscricao = null;
+
+  function soltarTranscricao() {
+    transcrevendo = false;
+    clearTimeout(travaDaTranscricao);
+  }
 
   function iniciarTranscricao(card, media) {
     if (transcrevendo) {
-      showToast('Já tem um vídeo sendo transcrito. Espere terminar para pedir outro.');
+      showToast('Já tem um vídeo sendo transcrito nesta aba. Espere terminar para pedir outro.');
       return;
     }
+    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id) return;
     transcrevendo = true;
+    travaDaTranscricao = setTimeout(soltarTranscricao, 15 * 60 * 1000);
     const dados = cardDataCache.get(card) || parseCardDetails(card) || {};
     const pais = (new URLSearchParams(location.search).get('country') || '').toUpperCase();
     showToast('Transcrevendo a fala do vídeo...', 8000);
-    safeSendMessage(
-      {
-        type: 'TRANSCREVER',
-        url: media.url,
-        nomeVideo: media.filename,
-        libraryId: dados.libraryId || '',
-        pagina: dados.pageName || dados.name || '',
-        dias: dados.daysRunning || 0,
-        texto: getCardText(card).slice(0, 1500),
-        pais
-      },
-      (resposta) => {
-        transcrevendo = false;
-        if (resposta && resposta.success) {
-          showToast(
-            resposta.temFala
-              ? `Roteiro do vídeo baixado: ${resposta.nome}`
-              : 'Esse vídeo não tem fala. O arquivo do roteiro avisa isso.',
-            6000
-          );
-        } else {
-          showToast(`Não deu para transcrever: ${(resposta && resposta.error) || 'tente de novo.'}`, 6000);
+    try {
+      chrome.runtime.sendMessage(
+        {
+          type: 'TRANSCREVER',
+          url: media.url,
+          nomeVideo: media.filename,
+          libraryId: dados.libraryId || '',
+          pagina: dados.pageName || dados.name || '',
+          dias: dados.daysRunning || 0,
+          texto: getCardText(card).slice(0, 1500),
+          pais
+        },
+        (resposta) => {
+          if (chrome.runtime.lastError || !resposta || !resposta.success) {
+            soltarTranscricao();
+            showToast(`Não deu para transcrever: ${(resposta && resposta.error) || 'atualize a página e tente de novo.'}`, 6000);
+            return;
+          }
+          if (resposta.naFila) showToast('Na fila: outro vídeo está sendo transcrito antes deste.', 6000);
         }
-      }
-    );
+      );
+    } catch (e) {
+      soltarTranscricao();
+      showToast('Não deu para transcrever: atualize a página e tente de novo.', 6000);
+    }
   }
 
   const TEXTO_DA_ETAPA = {
+    fila: () => 'Na fila: outro vídeo está sendo transcrito antes deste.',
     baixando: () => 'Transcrevendo: pegando o vídeo...',
-    modelo: (pct) => `Preparando o transcritor (só na primeira vez): ${pct || 0}%`,
-    ouvindo: () => 'Transcrevendo a fala do vídeo...'
+    modelo: (msg) => `Preparando o transcritor (só na primeira vez): ${msg.pct || 0}%`,
+    ouvindo: () => 'Transcrevendo a fala do vídeo...',
+    pronto: (msg) => (msg.temFala ? `Roteiro do vídeo baixado: ${msg.nome}` : 'Esse vídeo não tem fala. O arquivo do roteiro avisa isso.'),
+    erro: (msg) => `Não deu para transcrever: ${msg.erro || 'tente de novo.'}`
   };
 
   try {
     chrome.runtime.onMessage.addListener((msg) => {
       if (!msg || msg.type !== 'MINERAI_TRANSCRICAO_STATUS') return undefined;
-      const texto = TEXTO_DA_ETAPA[msg.etapa];
-      if (texto) showToast(texto(msg.pct), 12000);
+      if (!Object.prototype.hasOwnProperty.call(TEXTO_DA_ETAPA, msg.etapa)) return undefined;
+      const fim = msg.etapa === 'pronto' || msg.etapa === 'erro';
+      if (fim) soltarTranscricao();
+      showToast(TEXTO_DA_ETAPA[msg.etapa](msg), fim ? 6000 : 12000);
       return undefined;
     });
   } catch (e) {}
