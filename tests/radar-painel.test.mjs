@@ -68,3 +68,12 @@ test('dominioDe tira o www', () => {
   assert.equal(dominioDe('https://www.loja.com.br/x'), 'loja.com.br');
   assert.equal(dominioDe('lixo'), '');
 });
+
+import { avisoDoRadar } from '../src/utils/radar.js';
+
+test('avisoDoRadar só mostra a pausa da Meta se for de hoje', () => {
+  assert.equal(avisoDoRadar({ parado: 'bloqueio', paradoEm: '2026-10-13' }, '2026-10-13'), 'A Meta pediu uma pausa. O Radar tenta de novo amanhã sozinho.');
+  assert.equal(avisoDoRadar({ parado: 'bloqueio', paradoEm: '2026-10-12' }, '2026-10-13'), '');
+  assert.equal(avisoDoRadar({ parado: 'falha', paradoEm: '2026-10-13' }, '2026-10-13'), 'A Biblioteca não respondeu agora. O Radar tenta de novo mais tarde.');
+  assert.equal(avisoDoRadar({}, '2026-10-13'), '');
+});

@@ -88,6 +88,8 @@
     } catch (e) {
       return { total: null, anuncios: [] };
     }
+    // Página cortada no meio: objetoEm devolve null e JSON.parse(null) também.
+    if (!conexao || typeof conexao !== 'object') return { total: null, anuncios: [] };
 
     const lista = (conexao.edges || []).flatMap((e) => (e && e.node && e.node.collated_results) || []);
     const anuncios = lista
@@ -127,7 +129,9 @@
       .sort((a, b) => a.posicao - b.posicao)
       .map((a) => {
         const dias = a.startDate ? Math.max(1, diffDias(a.startDate, hoje) + 1) : 0;
-        const novo = !primeiraRodada && !(a.pageId in vistos);
+        // Novo = nunca visto nesta busca, ou visto pela primeira vez hoje (uma
+        // segunda rodada no mesmo dia não pode apagar o "novo").
+        const novo = !primeiraRodada && (!(a.pageId in vistos) || vistos[a.pageId] === hoje);
         if (!(a.pageId in novosVistos)) novosVistos[a.pageId] = hoje;
         return { ...a, dias, novaEscalando: dias >= RADAR.novaMin && dias <= RADAR.novaMax, novo };
       });

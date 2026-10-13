@@ -5,9 +5,9 @@ import { navigate } from '../router';
 import { api } from '../services/api';
 import { pedirAoRadar } from '../services/extensao';
 import { STATUS_CONFIG } from '../utils/metaParser';
-import { classifyStatus } from '../utils/offerMeta';
+import { classifyStatus, todayIso } from '../utils/offerMeta';
 import { getAccess, lockedMessage } from '../utils/plan';
-import { filtrarAchados, ofertaDoAchado, variacaoNicho, dominioDe } from '../utils/radar';
+import { filtrarAchados, ofertaDoAchado, variacaoNicho, dominioDe, avisoDoRadar } from '../utils/radar';
 import { safeHttpUrl } from '../utils/url';
 
 const PAISES = [
@@ -31,7 +31,7 @@ function lerFiltros() {
 
 /** Radar do nicho: buscas salvas que a extensão roda todo dia. */
 export default function RadarPage() {
-  const { offers, tabs, user, applyOffer, setNotice } = useAppData();
+  const { offers, tabs, activeTabId, user, applyOffer, setNotice } = useAppData();
   const [estado, setEstado] = useState({ carregando: true });
   const [termo, setTermo] = useState('');
   const [pais, setPais] = useState('BR');
@@ -43,7 +43,13 @@ export default function RadarPage() {
   const carregar = useCallback(async () => {
     const r = await pedirAoRadar({ type: 'RADAR_LISTAR' });
     if (!r.success) {
-      setEstado({ carregando: false, semExtensao: true });
+      // Uma consulta lenta no meio da rodada não pode trocar a página pelo
+      // "instale a extensão": mantém o que já estava na tela.
+      setEstado((s) => {
+        if (s.buscas) return { ...s, rodando: false };
+        if (r.error === 'EXTENSAO_AUSENTE') return { carregando: false, semExtensao: true };
+        return { carregando: false, erro: r.error };
+      });
       return;
     }
     setEstado({ carregando: false, ...r });
@@ -114,7 +120,7 @@ export default function RadarPage() {
     }
     setMinerando(achado.libraryId);
     try {
-      const res = await api.createOffer(ofertaDoAchado(achado, busca, tabs[0]?.id || null));
+      const res = await api.createOffer(ofertaDoAchado(achado, busca, activeTabId || tabs[0]?.id || null));
       applyOffer(res.offer);
       setNotice(`"${res.offer.name}" foi para o acervo. O rastreio diário passa a medir ela.`);
     } catch (err) {
@@ -124,6 +130,8 @@ export default function RadarPage() {
     }
   }
 
+  const hoje = todayIso();
+  const aviso = avisoDoRadar(estado, hoje);
   const buscas = estado.buscas || [];
   const resultados = estado.resultados || {};
   const ultimaRodada = useMemo(
@@ -202,9 +210,8 @@ export default function RadarPage() {
             </div>
           )}
 
-          {estado.parado === 'bloqueio' && (
-            <p className="radar-status alerta">A Meta pediu uma pausa. O Radar tenta de novo amanhã sozinho.</p>
-          )}
+          {estado.erro && <p className="radar-status alerta">{estado.erro}</p>}
+          {aviso && <p className="radar-status alerta">{aviso}</p>}
           {ultimaRodada && !estado.rodando && (
             <p className="radar-status">Última rodada: {ultimaRodada.slice(8, 10)}/{ultimaRodada.slice(5, 7)} às {ultimaRodada.slice(11, 16)}.</p>
           )}
@@ -232,7 +239,10 @@ export default function RadarPage() {
                 </header>
 
                 {!r && <p className="muted">Ainda não rodou. Clique em Rodar agora ou espere a rodada de amanhã.</p>}
-                {r && lista.length === 0 && (
+                {r && r.data !== hoje && (
+                  <p className="muted">Resultado de {r.data.slice(8, 10)}/{r.data.slice(5, 7)}. A rodada de hoje ainda não aconteceu.</p>
+                )}
+                {r && r.data === hoje && lista.length === 0 && (
                   <p className="muted">
                     Nada novo por aqui hoje{filtros.soNovas || filtros.esconderAcervo ? ' com esses filtros' : ''}.
                   </p>

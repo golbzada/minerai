@@ -58,6 +58,15 @@ export function ofertaDoAchado(achado, busca, tabId = null) {
   };
 }
 
+/** Aviso do topo da página: só o de hoje (o freio de ontem já passou). */
+export function avisoDoRadar(estado, hoje) {
+  const e = estado || {};
+  if (e.paradoEm !== hoje) return '';
+  if (e.parado === 'bloqueio') return 'A Meta pediu uma pausa. O Radar tenta de novo amanhã sozinho.';
+  if (e.parado === 'falha') return 'A Biblioteca não respondeu agora. O Radar tenta de novo mais tarde.';
+  return '';
+}
+
 /** "+4% desde a última rodada" */
 export function variacaoNicho(total, anterior) {
   if (!Number.isFinite(Number(total)) || anterior === null || anterior === undefined || !Number(anterior)) return '';

@@ -98,3 +98,13 @@ test('montarAchados: vistos não cresce sem limite', () => {
   assert.ok(Object.keys(r.vistos).length <= 3000);
   assert.equal(r.vistos['111111'], HOJE);
 });
+
+test('JSON quebrado na página não derruba o Radar', () => {
+  assert.deepEqual(R.extrairAnuncios('"search_results_connection":{"count":3,"edges":[{"node":'), { total: null, anuncios: [] });
+});
+
+test('anunciante visto pela primeira vez hoje continua novo numa segunda rodada de hoje', () => {
+  const { anuncios } = R.extrairAnuncios(html([[anuncio('9', '999999', '2026-10-01')]]));
+  const r = R.montarAchados(anuncios, { hoje: HOJE, vistos: { 999999: HOJE }, primeiraRodada: false });
+  assert.equal(r.achados[0].novo, true);
+});
