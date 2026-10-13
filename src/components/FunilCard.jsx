@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import Icon from './Icons';
 import StarRating from './StarRating';
-import { STATUS_CONFIG, statusText } from '../utils/metaParser';
-import { resolveRunningDays, resolveStatus } from '../utils/offerMeta';
+import StageBadge from './StageBadge';
+import { resolveRunningDays } from '../utils/offerMeta';
 import { safeImageSrc, safeCreativeThumb } from '../utils/url';
 import { getExtras } from '../utils/offerExtras';
 
@@ -30,7 +30,6 @@ export default function FunilCard({
   const [imgFailed, setImgFailed] = useState(false);
   const extras = getExtras(offer);
   const days = resolveRunningDays(offer);
-  const status = STATUS_CONFIG[resolveStatus(offer)] || STATUS_CONFIG.testing;
   const ads = offer.ads_count != null ? Number(offer.ads_count) : 1;
   const image = imgFailed
     ? null
@@ -52,9 +51,7 @@ export default function FunilCard({
         <span className="fcard-body">
           <span className="fcard-name">{offer.name}</span>
           <span className="fcard-meta">
-            <span className="fcard-status" style={{ color: status.color === '#ffffff' ? status.bg : status.color }}>
-              {statusText(status)}
-            </span>
+            <StageBadge offer={offer} variant="text" />
             <span>· {days} {days === 1 ? 'dia' : 'dias'}</span>
             {!dense && <span>· {ads} {ads === 1 ? 'anúncio' : 'anúncios'}</span>}
           </span>

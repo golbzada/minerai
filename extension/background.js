@@ -110,6 +110,8 @@ function sanitizeOfferData(source) {
     notes: clip(String(src.notes || ''), OFFER_LIMITS.notes),
     status: safeStatus(src.status),
     adsCount: safeCount(src.adsCount, 1),
+    // Total de anúncios ativos do anunciante; 0 = não foi possível ler.
+    pageActiveAds: safeCount(src.pageActiveAds, 0),
     pageId: safeDigits(src.pageId),
     pageSlug: safePageSlug(src.pageSlug),
     libraryId: safeDigits(src.libraryId),
@@ -509,6 +511,11 @@ function buildMeta(offerData, existing) {
     ad_url: offerData.adUrl || undefined,
     page_ads_url: offerData.pageAdsUrl || undefined,
     topic: offerData.topic || undefined,
+    // Só sobrescreve quando a leitura deu certo: se falhar, fica o número
+    // da mineração anterior.
+    ...(offerData.pageActiveAds > 0
+      ? { page_active_ads: offerData.pageActiveAds, page_active_ads_at: todayIso() }
+      : {}),
     source: 'extension',
     captured_at: new Date().toISOString()
   };

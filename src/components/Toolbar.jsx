@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Icon from './Icons';
+import { StageLegend } from './StageBadge';
 import { STATUS_CONFIG, NICHE_OPTIONS, statusText } from '../utils/metaParser';
 
 /**
@@ -32,12 +33,15 @@ export default function Toolbar({
         />
       </label>
 
-      <select value={statusFilter} onChange={(e) => onStatusFilterChange(e.target.value)} aria-label="Filtrar por status">
-        <option value="all">Todos os status</option>
-        {Object.values(STATUS_CONFIG).map((s) => (
-          <option key={s.key} value={s.key}>{statusText(s)}</option>
-        ))}
-      </select>
+      <div className="gfilter-with-help">
+        <select value={statusFilter} onChange={(e) => onStatusFilterChange(e.target.value)} aria-label="Filtrar por status">
+          <option value="all">Todos os status</option>
+          {Object.values(STATUS_CONFIG).map((s) => (
+            <option key={s.key} value={s.key}>{statusText(s)}</option>
+          ))}
+        </select>
+        <StageLegend />
+      </div>
 
       <select value={nicheFilter} onChange={(e) => onNicheFilterChange(e.target.value)} aria-label="Filtrar por nicho">
         <option value="all">Todos os nichos</option>

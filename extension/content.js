@@ -1143,25 +1143,109 @@
   }
 
   // ============================================================================
-  // ESTÁGIO DA OFERTA (SOMENTE PELO TEMPO DE VEICULAÇÃO)
+  // ESTÁGIO DA OFERTA (TEMPO DE VEICULAÇÃO + ANÚNCIOS DO ANUNCIANTE)
   // ============================================================================
-  // A contagem de anúncios da Biblioteca não é confiável (a Meta mostra
-  // "N anúncios usam este criativo", que não é o total de anúncios ativos da
-  // oferta), então ela ficou de fora da conta de propósito.
+  // O "N anúncios usam este criativo" do card não entra na conta: não é o
+  // total de anúncios ativos da oferta. O que entra é o total do ANUNCIANTE,
+  // lido só na hora de minerar (ver fetchPageActiveAds).
   //
-  // Para ajustar as faixas, mude só estes números:
+  // Para ajustar as faixas, mude só estes números (e os de src/utils/offerMeta.js):
   const STAGE_DAYS = {
     pre_scaling: 10,  // 1 a 9 dias   -> Teste
     scaling: 30,      // 10 a 29 dias -> Pré-escala
     winner: 150       // 30 a 149     -> Escalando | 150+ -> Vencedor
   };
 
-  function classifyStage(daysRunning) {
+  // Exceção: com tempo E muitos anúncios ativos do anunciante, já conta como
+  // Escalando antes dos 30 dias. Muito anúncio em poucos dias pode ser só
+  // teste, por isso toda regra exige um mínimo de dias.
+  const STAGE_BY_ADS = [
+    { days: 15, ads: 10 }, // 15+ dias e 10+ anúncios -> Escalando
+    { days: 20, ads: 7 }   // 20+ dias e 7+ anúncios  -> Escalando
+  ];
+
+  function classifyStage(daysRunning, pageActiveAds) {
     const days = Number(daysRunning) || 0;
+    const ads = Number(pageActiveAds) || 0;
     if (days >= STAGE_DAYS.winner) return 'winner';
     if (days >= STAGE_DAYS.scaling) return 'scaling';
+    if (ads && STAGE_BY_ADS.some((r) => days >= r.days && ads >= r.ads)) return 'scaling';
     if (days >= STAGE_DAYS.pre_scaling) return 'pre_scaling';
     return 'testing';
+  }
+
+  // Explicação das etiquetas para quem está começando (tooltip da pílula).
+  const STAGE_TIP =
+    `Em teste: 1 a ${STAGE_DAYS.pre_scaling - 1} dias no ar, o anunciante ainda está testando.\n` +
+    `Pré-escala: ${STAGE_DAYS.pre_scaling} a ${STAGE_DAYS.scaling - 1} dias, passou do teste e segue rodando.\n` +
+    `Escalando: ${STAGE_DAYS.scaling} a ${STAGE_DAYS.winner - 1} dias pagando anúncio todo dia.\n` +
+    `Vencedor: ${STAGE_DAYS.winner}+ dias, oferta validada.\n` +
+    `Exceção: ${STAGE_BY_ADS.map((r) => `${r.days}+ dias com ${r.ads}+ anúncios ativos do anunciante`).join(' ou ')} já conta como Escalando (lido ao minerar).`;
+
+  /** HTML de uma página da Biblioteca (mesma origem), com limite de tempo. */
+  async function fetchLibraryHtml(query) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const res = await fetch(`${location.origin}/ads/library/?${query}`, {
+        credentials: 'include',
+        signal: controller.signal
+      });
+      return res.ok ? await res.text() : '';
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * ID REAL da página do anunciante, lido do próprio anúncio.
+   * O ID que sai do card muitas vezes é o do perfil (ou nem existe, quando a
+   * página tem apelido) e a Biblioteca devolve zero anúncios para ele.
+   * Confirmado na Biblioteca real: o HTML de `?id=<anúncio>` traz
+   * `"page_id":"N"` junto do `"ad_archive_id"` daquele anúncio.
+   */
+  async function fetchRealPageId(libraryId) {
+    if (!/^\d{6,}$/.test(String(libraryId || ''))) return '';
+    const html = await fetchLibraryHtml(`id=${libraryId}`);
+    const at = html.indexOf(`"ad_archive_id":"${libraryId}"`);
+    if (at < 0) return '';
+    const after = html.slice(at, at + 4000).match(/"page_id":"(\d{6,})"/);
+    if (after) return after[1];
+    const before = html.slice(Math.max(0, at - 4000), at).match(/"page_id":"(\d{6,})"/g);
+    return before ? before[before.length - 1].replace(/\D/g, '') : '';
+  }
+
+  /**
+   * Total de anúncios ATIVOS do anunciante (o "~27 resultados" da página dele
+   * na Biblioteca). Roda só no clique de Minerar, uma leitura por oferta, para
+   * não travar a Biblioteca.
+   *
+   * Confirmado na Biblioteca real: o HTML da página do anunciante já vem com
+   * `"search_results_connection":{"count":N` e N bate com o "~N resultados"
+   * da tela. Mesma origem, então não precisa de aba nem de permissão nova.
+   *
+   * Devolve null quando não deu para ler — a mineração segue sem o número.
+   */
+  async function fetchPageActiveAds(libraryId, cardPageId) {
+    try {
+      const pageId = (await fetchRealPageId(libraryId)) || cardPageId;
+      if (!/^\d{6,}$/.test(String(pageId || ''))) return null;
+
+      // Mesmo país da busca atual: na tab "Gringa" o total do Brasil daria zero.
+      const country =
+        (new URLSearchParams(location.search).get('country') || 'ALL').replace(/[^A-Z]/gi, '') || 'ALL';
+      const html = await fetchLibraryHtml(
+        `active_status=active&ad_type=all&country=${encodeURIComponent(country)}` +
+          `&view_all_page_id=${pageId}&media_type=all`
+      );
+      const match = html.match(/"search_results_connection":\{"count":(\d+)/);
+      const n = match ? parseInt(match[1], 10) : 0;
+      // Zero com um anúncio ativo na tela = ID de página errado. Melhor sem número.
+      return n > 0 ? n : null;
+    } catch (e) {
+      console.warn('[Mineraí Extensão] Não deu para ler os anúncios do anunciante:', e.message);
+      return null;
+    }
   }
 
   // Cor da pílula de tempo, independente do estágio: quanto mais tempo no ar,
@@ -1742,7 +1826,7 @@
       foot.innerHTML = `
         <span class="minerai-pill running-days ${daysColorClass(data.daysRunning)}" title="Há quanto tempo o anúncio está no ar${data.startDate ? ` (começou em ${escapeHtml(data.startDate)})` : ''}. Azul até ${DAYS_COLOR.yellow - 1} dias, amarelo de ${DAYS_COLOR.yellow} a ${DAYS_COLOR.green - 1}, verde a partir de ${DAYS_COLOR.green}.">${icon('relogio')}<span>${escapeHtml(daysLabel)}</span></span>
         <span class="minerai-pill creatives" title="Quantos anúncios a Meta diz que usam este criativo">${icon('camadas')}<span>${escapeHtml(adsLabel)}</span></span>
-        <span class="minerai-pill stage stage-${escapeHtml(data.status)}" title="Estágio pelo tempo no ar: até ${STAGE_DAYS.pre_scaling - 1} dias em teste, ${STAGE_DAYS.pre_scaling} a ${STAGE_DAYS.scaling - 1} pré-escala, ${STAGE_DAYS.scaling} a ${STAGE_DAYS.winner - 1} escalando, ${STAGE_DAYS.winner}+ vencedor">${icon('etiqueta')}<span>${escapeHtml(statusLabel)}</span></span>
+        <span class="minerai-pill stage stage-${escapeHtml(data.status)}" title="${escapeHtml(STAGE_TIP)}">${icon('etiqueta')}<span>${escapeHtml(statusLabel)}</span></span>
       `;
 
       const captureBtn = bar.querySelector('.minerai-capture-btn');
@@ -1879,7 +1963,7 @@
     );
   }
 
-  function handleCaptureOffer(data, btn) {
+  async function handleCaptureOffer(cardData, btn) {
     if (!currentUser) {
       showToast('Faça login no Mineraí para salvar suas ofertas mineradas!');
       return;
@@ -1889,6 +1973,17 @@
 
     btn.disabled = true;
     btn.className = 'minerai-capture-btn';
+    btn.innerHTML = `${icon('relogio')}<span class="minerai-btn-text">Contando anúncios...</span>`;
+
+    // Total de anúncios do anunciante: entra no estágio (regra de exceção) e
+    // fica guardado na oferta. Se falhar, salva do mesmo jeito.
+    const pageActiveAds = await fetchPageActiveAds(cardData.libraryId, cardData.pageId);
+    const data = {
+      ...cardData,
+      pageActiveAds: pageActiveAds || 0,
+      status: classifyStage(cardData.daysRunning, pageActiveAds)
+    };
+
     btn.innerHTML = `${icon('relogio')}<span class="minerai-btn-text">Salvando...</span>`;
 
     safeSendMessage(
@@ -1904,10 +1999,13 @@
           // Avisa em qual campo a Meta não expôs o dado, para o usuário poder
           // completar à mão no painel em vez de descobrir depois.
           const warn = data.missing?.length ? ` (verifique: ${data.missing.join(', ')})` : '';
+          const pageAds = data.pageActiveAds
+            ? ` O anunciante tem ${data.pageActiveAds} ${data.pageActiveAds === 1 ? 'anúncio ativo' : 'anúncios ativos'}.`
+            : '';
           showToast(
             updated
-              ? `"${data.name}" atualizada: ${data.adsCount} anúncios registrados hoje.${warn}`
-              : `"${data.name}" foi salva no Mineraí!${warn}`
+              ? `"${data.name}" atualizada: ${data.adsCount} anúncios registrados hoje.${pageAds}${warn}`
+              : `"${data.name}" foi salva no Mineraí!${pageAds}${warn}`
           );
 
           setTimeout(() => {

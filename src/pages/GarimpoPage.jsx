@@ -366,13 +366,12 @@ export default function GarimpoPage({ query, onExport }) {
 
   return (
     <>
-      <section className="hero">
-        <p className="eyebrow">GARIMPAGEM DE OFERTAS DE ALTA PERFORMANCE</p>
-        <h1>
-          Garimpos que <br />
-          rendem <em>ouro.</em>
-        </h1>
-      </section>
+      <div className="page-head">
+        <div>
+          <p className="eyebrow">Garimpagem de ofertas de alta performance</p>
+          <h1 className="page-title">Garimpos que rendem <em>ouro.</em></h1>
+        </div>
+      </div>
 
       <PageGuide
         id="garimpo"

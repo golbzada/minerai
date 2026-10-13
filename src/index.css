@@ -2226,3 +2226,142 @@ h1 em {
   border-radius: 9px;
   font-style: italic;
 }
+
+/* ---------- Etiquetas de estágio: explicação ao passar o mouse ---------- */
+.status-badge.has-tip {
+  cursor: help;
+}
+
+.status-badge.has-tip:focus-visible {
+  outline: 2px solid var(--gold-solid);
+  outline-offset: 2px;
+}
+
+.stage-tip {
+  position: fixed;
+  z-index: 9999;
+  display: grid;
+  gap: 4px;
+  width: max-content;
+  max-width: 280px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #1a1a1a;
+  color: #f5f1e6;
+  font-size: 0.76rem;
+  font-weight: 500;
+  line-height: 1.45;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+}
+
+.stage-tip.up {
+  transform: translateY(-100%);
+}
+
+.stage-tip strong {
+  color: #e8c46a;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ---------- Legenda das etiquetas (botão "?" do filtro de status) ---------- */
+.gfilter-with-help {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gfilter-with-help select {
+  flex: 1;
+}
+
+.stage-legend {
+  position: relative;
+  flex: none;
+}
+
+.stage-legend-btn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border-default);
+  border-radius: 50%;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.stage-legend-btn:hover,
+.stage-legend-btn.active {
+  border-color: var(--gold-solid);
+  color: var(--text-primary);
+}
+
+.stage-legend-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: -8px;
+  z-index: 50;
+  width: min(360px, calc(100vw - 32px));
+  padding: 14px 16px;
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.stage-legend-title {
+  margin: 0 0 10px;
+  font-weight: 800;
+}
+
+.stage-legend-pop ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stage-legend-pop li {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  align-items: start;
+  gap: 10px;
+}
+
+.stage-legend-pop li .status-badge {
+  justify-content: center;
+}
+
+.stage-legend-pop li div {
+  display: grid;
+  gap: 1px;
+}
+
+.stage-legend-pop li span:not(.status-badge) {
+  color: var(--text-secondary);
+}
+
+.stage-legend-note {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-card-alt);
+}
+
+.stage-legend-foot {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}

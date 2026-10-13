@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import Chart from './Chart';
 import StarRating from './StarRating';
-import { STATUS_CONFIG } from '../utils/metaParser';
-import { normalizeHistory, resolveRunningDays, resolveStatus, decodeNotes } from '../utils/offerMeta';
+import StageBadge from './StageBadge';
+import { normalizeHistory, resolveRunningDays, resolvePageActiveAds, decodeNotes } from '../utils/offerMeta';
 import { safeHttpUrl, safeImageSrc, safeCreativeThumb } from '../utils/url';
 import { getExtras, STAGES } from '../utils/offerExtras';
 
@@ -75,7 +75,7 @@ export default function OfferCard({
 
   const runningDays = resolveRunningDays(offer);
   const adsCount = offer.ads_count != null ? Number(offer.ads_count) : 1;
-  const statusCfg = STATUS_CONFIG[resolveStatus(offer)] || STATUS_CONFIG.testing;
+  const pageAds = resolvePageActiveAds(offer);
   const notesText = offer.notes ?? decodeNotes(offer.funnel_notes).notes;
 
   let historyList = normalizeHistory(offer.history);
@@ -146,16 +146,7 @@ export default function OfferCard({
         <div className="content">
           <div>
             <div className="badge-row">
-              <span
-                className="status-badge"
-                style={{
-                  color: statusCfg.color,
-                  backgroundColor: statusCfg.bg,
-                  borderColor: statusCfg.border
-                }}
-              >
-                {statusCfg.label}
-              </span>
+              <StageBadge offer={offer} />
               {!readOnly && extras.stage !== 'radar' && (
                 <span className={`stage-badge stage-${extras.stage}`} title="Coluna na esteira">{stageLabel}</span>
               )}
@@ -199,6 +190,11 @@ export default function OfferCard({
                 ⏳ {runningDays} {runningDays === 1 ? 'dia rodando' : 'dias rodando'}
               </span>
               <span title="Anúncios ativos na última medição">📊 {adsCount} ativos</span>
+              {pageAds && (
+                <span title="Total de anúncios ativos do anunciante, lido quando a oferta foi minerada">
+                  🏢 {pageAds} do anunciante
+                </span>
+              )}
             </p>
 
             <p className="page-id page-id-line">

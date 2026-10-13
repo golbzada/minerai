@@ -1,8 +1,8 @@
 import React from 'react';
 import StarRating from './StarRating';
 import { STAGES, getExtras } from '../utils/offerExtras';
-import { resolveRunningDays, resolveStatus } from '../utils/offerMeta';
-import { STATUS_CONFIG } from '../utils/metaParser';
+import StageBadge from './StageBadge';
+import { resolveRunningDays } from '../utils/offerMeta';
 
 /** Modo lista: uma linha por oferta, para acervos grandes. */
 export default function OfferListTable({
@@ -46,7 +46,6 @@ export default function OfferListTable({
         <tbody>
           {offers.map((o) => {
             const x = getExtras(o);
-            const cfg = STATUS_CONFIG[resolveStatus(o)] || STATUS_CONFIG.testing;
             const dups = duplicates?.get(o.id) || [];
             return (
               <tr key={o.id} className={selected.has(o.id) ? 'selected' : ''}>
@@ -64,7 +63,7 @@ export default function OfferListTable({
                 </td>
                 <td>{o.niche}</td>
                 <td>
-                  <span className="status-badge" style={{ color: cfg.color, backgroundColor: cfg.bg, borderColor: cfg.border }}>{cfg.label}</span>
+                  <StageBadge offer={o} />
                 </td>
                 <td>{stageLabel(x.stage)}</td>
                 <td className="num">{resolveRunningDays(o)}</td>

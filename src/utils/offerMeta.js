@@ -186,9 +186,9 @@ export function upsertHistory(history, date, count) {
  * Faixas de tempo que definem o estágio da oferta.
  * Precisa ficar igual ao STAGE_DAYS de extension/content.js.
  *
- * A quantidade de anúncios ficou de fora de propósito: o que a Biblioteca
- * mostra é "N anúncios usam este criativo", que não é o total de anúncios
- * ativos da oferta, então não dá para classificar escala por ali.
+ * O "N anúncios usam este criativo" do card NÃO entra aqui: ele não é o total
+ * de anúncios ativos da oferta. O que entra é o total do ANUNCIANTE, lido na
+ * hora de minerar (ver STAGE_BY_ADS).
  */
 export const STAGE_DAYS = {
   pre_scaling: 10,  // 1 a 9 dias    -> Em teste
@@ -196,12 +196,37 @@ export const STAGE_DAYS = {
   winner: 150       // 30 a 149 dias -> Escalando | 150+ -> Vencedor
 };
 
-/** Estágio da oferta pelo tempo de veiculação. */
-export function classifyStatus(runningDays) {
+/**
+ * Exceção pela quantidade de anúncios ativos do anunciante: com tempo E
+ * volume, a oferta já conta como Escalando antes dos 30 dias. Só sobe a
+ * etiqueta, nunca rebaixa. Muitos anúncios em poucos dias pode ser só teste,
+ * por isso toda regra exige um mínimo de dias.
+ * Precisa ficar igual ao STAGE_BY_ADS de extension/content.js.
+ */
+export const STAGE_BY_ADS = [
+  { days: 15, ads: 10 }, // 15+ dias e 10+ anúncios -> Escalando
+  { days: 20, ads: 7 }   // 20+ dias e 7+ anúncios  -> Escalando
+];
+
+/** Total de anúncios ativos do anunciante lido na mineração, ou null. */
+export function resolvePageActiveAds(offer, meta) {
+  const n = Number(mergeMeta(offer, meta).page_active_ads);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Regra de anúncios que a oferta cumpre, ou null. */
+function adsRuleHit(days, pageAds) {
+  if (!pageAds) return null;
+  return STAGE_BY_ADS.find((r) => days >= r.days && pageAds >= r.ads) || null;
+}
+
+/** Estágio da oferta pelo tempo de veiculação (e anúncios do anunciante). */
+export function classifyStatus(runningDays, pageActiveAds) {
   const days = Number(runningDays) || 0;
 
   if (days >= STAGE_DAYS.winner) return 'winner';
   if (days >= STAGE_DAYS.scaling) return 'scaling';
+  if (adsRuleHit(days, Number(pageActiveAds) || 0)) return 'scaling';
   if (days >= STAGE_DAYS.pre_scaling) return 'pre_scaling';
   return 'testing';
 }
@@ -217,5 +242,63 @@ export function resolveStatus(offer) {
   const meta = mergeMeta(offer);
   if (meta.status_manual && offer.status) return offer.status;
 
-  return classifyStatus(resolveRunningDays(offer, meta));
+  return classifyStatus(resolveRunningDays(offer, meta), resolvePageActiveAds(offer, meta));
+}
+
+/**
+ * Legenda das etiquetas, para quem está começando. A ordem é a da evolução
+ * de uma oferta; os textos usam as faixas acima, então mudam junto com elas.
+ */
+export const STAGE_GUIDE = [
+  {
+    key: 'testing',
+    range: `1 a ${STAGE_DAYS.pre_scaling - 1} dias`,
+    text: 'Acabou de entrar no ar. O anunciante ainda está testando se vende.'
+  },
+  {
+    key: 'pre_scaling',
+    range: `${STAGE_DAYS.pre_scaling} a ${STAGE_DAYS.scaling - 1} dias`,
+    text: 'Passou do teste e continua rodando. Sinal de que está dando algum retorno.'
+  },
+  {
+    key: 'scaling',
+    range: `${STAGE_DAYS.scaling} a ${STAGE_DAYS.winner - 1} dias`,
+    text: 'Está há mais de um mês pagando anúncio todo dia. Se não vendesse, já teria parado.'
+  },
+  {
+    key: 'winner',
+    range: `${STAGE_DAYS.winner}+ dias`,
+    text: 'Meses no ar sem parar. Oferta validada, das que mais vale estudar.'
+  }
+];
+
+/** "15+ dias com 10+ anúncios ativos do anunciante, ou 20+ dias com 7+". */
+export const STAGE_ADS_RULE_TEXT = STAGE_BY_ADS.map(
+  (r, i) => `${r.days}+ dias com ${r.ads}+ anúncios${i === 0 ? ' ativos do anunciante' : ''}`
+).join(', ou ');
+
+/**
+ * Explicação curta do estágio desta oferta, para o tooltip da etiqueta:
+ * diz POR QUE ela recebeu essa etiqueta, com os dois números juntos para a
+ * pessoa poder tirar a própria conclusão.
+ */
+export function stageReason(offer) {
+  const meta = mergeMeta(offer);
+  const days = resolveRunningDays(offer, meta);
+  const pageAds = resolvePageActiveAds(offer, meta);
+  const status = resolveStatus(offer);
+  const daysTxt = `${days} ${days === 1 ? 'dia' : 'dias'} no ar`;
+  const adsTxt = pageAds ? `${pageAds} ${pageAds === 1 ? 'anúncio ativo' : 'anúncios ativos'} do anunciante` : '';
+
+  if (meta.status_manual && offer?.status) {
+    return `Etiqueta escolhida à mão. ${daysTxt}${adsTxt ? ` e ${adsTxt}` : ''}.`;
+  }
+
+  if (status === 'scaling' && days < STAGE_DAYS.scaling) {
+    return `${daysTxt} e ${adsTxt}. Com tempo e muitos anúncios ao mesmo tempo, já conta como escalando.`;
+  }
+
+  const guide = STAGE_GUIDE.find((g) => g.key === status);
+  const facts = adsTxt ? `${daysTxt} e ${adsTxt}` : daysTxt;
+  return guide ? `${facts} (${guide.range}). ${guide.text}` : facts;
 }

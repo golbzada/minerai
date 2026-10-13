@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Chart from '../components/Chart';
 import StarRating from '../components/StarRating';
+import StageBadge from '../components/StageBadge';
 import TagEditor from '../components/TagEditor';
 import OfferModal from '../components/OfferModal';
 import { api } from '../services/api';
 import { useAppData } from '../context/AppData';
 import { navigate } from '../router';
 import { STATUS_CONFIG } from '../utils/metaParser';
-import { normalizeHistory, resolveRunningDays, resolveStatus, todayIso, decodeNotes } from '../utils/offerMeta';
+import { normalizeHistory, resolveRunningDays, resolvePageActiveAds, resolveStatus, todayIso, decodeNotes } from '../utils/offerMeta';
 import { safeHttpUrl, safeImageSrc, safeCreativeThumb } from '../utils/url';
 import { STAGES, CHECKLIST_ITEMS, getExtras, allTags, offerMeta, withMetaPatch } from '../utils/offerExtras';
 import { getAccess, lockedMessage } from '../utils/plan';
@@ -54,7 +55,6 @@ export default function OfferPage({ id }) {
 
   const extras = getExtras(offer);
   const meta = offerMeta(offer);
-  const statusCfg = STATUS_CONFIG[resolveStatus(offer)] || STATUS_CONFIG.testing;
   const days = resolveRunningDays(offer);
   const history = normalizeHistory(offer.history);
   const creative = safeCreativeThumb(offer.creative_thumb);
@@ -281,9 +281,14 @@ export default function OfferPage({ id }) {
             </div>
 
             <div className="offer-stats">
-              <div><small>Status</small><span className="status-badge" style={{ color: statusCfg.color, backgroundColor: statusCfg.bg, borderColor: statusCfg.border }}>{statusCfg.label}</span></div>
+              <div><small>Status</small><StageBadge offer={offer} /></div>
               <div><small>Dias rodando</small><strong>{days}</strong></div>
               <div><small>Anúncios ativos</small><strong>{offer.ads_count ?? 0}</strong></div>
+              {resolvePageActiveAds(offer) && (
+                <div title="Total de anúncios ativos do anunciante, lido quando a oferta foi minerada">
+                  <small>Do anunciante</small><strong>{resolvePageActiveAds(offer)}</strong>
+                </div>
+              )}
               <div><small>Medições</small><strong>{history.length}</strong></div>
               {meta.start_date && <div><small>Início</small><strong>{fmtDate(`${meta.start_date}T12:00:00`)}</strong></div>}
             </div>
