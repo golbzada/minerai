@@ -231,3 +231,13 @@ test('resumo conta só as ofertas medidas de verdade', () => {
   const e = { ligado: true, dia: HOJE, fila: [], total: 4, feitas: 4, medidas: 1, eventos: {}, terminadoEm: `${HOJE}T09:12` };
   assert.equal(R.resumoDoRastreio(e, false, HOJE), 'Hoje às 09:12 · 1 oferta medida');
 });
+
+test('precisaChecarBrasil: só oferta de fora, uma vez por semana', () => {
+  assert.equal(R.precisaChecarBrasil({ country: 'US' }, HOJE), true);
+  assert.equal(R.precisaChecarBrasil({ country: 'US', brasil_at: diasAntes(3) }, HOJE), false);
+  assert.equal(R.precisaChecarBrasil({ country: 'US', brasil_at: diasAntes(8) }, HOJE), true);
+  assert.equal(R.precisaChecarBrasil({ country: 'BR' }, HOJE), false);
+  assert.equal(R.precisaChecarBrasil({ country: 'ALL' }, HOJE), false);
+  assert.equal(R.precisaChecarBrasil({}, HOJE), false);
+  assert.equal(R.precisaChecarBrasil({ country: 'US', dead_since: diasAntes(2) }, HOJE), false);
+});

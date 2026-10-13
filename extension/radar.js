@@ -22,6 +22,8 @@ const RADAR_MAX_BUSCAS = 10;
 const RADAR_TERMO_MAX = 60;
 const RADAR_FALHAS_SEGUIDAS = 3;
 const RADAR_ALARME_AGORA = 'radar-agora';
+const RADAR_BRASIL_POR_BUSCA = 8;   // checagens no Brasil por busca gringa, por dia
+const RADAR_BRASIL_MAX = 2000;      // anunciantes lembrados no cache do Brasil
 
 let radarRodando = false;
 
@@ -33,7 +35,7 @@ async function chaveDoRadar() {
 }
 
 async function lerRadar(chave) {
-  const vazio = { buscas: [], resultados: {}, vistos: {} };
+  const vazio = { buscas: [], resultados: {}, vistos: {}, brasil: {} };
   if (!chave) return vazio;
   const r = await chrome.storage.local.get([chave]);
   return { ...vazio, ...(r[chave] || {}) };
@@ -91,6 +93,41 @@ function rastreioLiberaRadar(estado, hoje) {
   if (e.dia !== hoje) return false;
   if (e.parado === 'bloqueio') return false;
   return Boolean(e.terminadoEm || e.parado);
+}
+
+/**
+ * Gringa x Brasil: para os anunciantes escolhidos, lê o Brasil (mesma leitura
+ * do rastreio, lerBrasilDaOferta) e guarda CADA resultado na hora — salvar
+ * também mantém a extensão acordada entre uma leitura e outra.
+ * Devolve { cache: {pageId: {...}}, bloqueio }.
+ */
+async function checarBrasil(achados, cache, hoje, pausa, guardar) {
+  const R = self.MineraiRadar;
+  const novos = {};
+  const ids = R.escolherParaChecarBrasil(achados, cache, hoje, RADAR_BRASIL_POR_BUSCA);
+
+  for (const id of ids) {
+    const achado = achados.find((a) => a.pageId === id);
+    const lido = await lerBrasilDaOferta(id, achado && achado.link, pausa);
+    if (lido && lido.bloqueio) return { cache: novos, bloqueio: true };
+    if (!lido) continue; // não respondeu: tenta outro dia, sem chutar zero
+    novos[id] = { data: hoje, anunciante: lido.anunciante, site: lido.site, termo: lido.termo || '' };
+    await guardar({ [id]: novos[id] });
+  }
+  return { cache: novos, bloqueio: false };
+}
+
+/** Junta o cache novo do Brasil, esquecendo os mais antigos acima do limite. */
+function juntarCacheBrasil(atual, novos) {
+  const junto = { ...(atual || {}), ...(novos || {}) };
+  const chaves = Object.keys(junto);
+  if (chaves.length > RADAR_BRASIL_MAX) {
+    chaves
+      .sort((a, b) => String(junto[a].data).localeCompare(String(junto[b].data)))
+      .slice(0, chaves.length - RADAR_BRASIL_MAX)
+      .forEach((k) => delete junto[k]);
+  }
+  return junto;
 }
 
 function avisarRadar(novas) {
@@ -169,11 +206,23 @@ async function radarTick({ forcar = false, pausa = pausaPadrao } = {}) {
 
       const anterior = radar.resultados[busca.id];
       const primeiraRodada = !anterior || (anterior.data === hoje && anterior.primeira === true);
-      const { achados, vistos } = R.montarAchados(leitura.anuncios, {
+      const montado = R.montarAchados(leitura.anuncios, {
         hoje,
         vistos: radar.vistos[busca.id] || {},
         primeiraRodada
       });
+      const { vistos } = montado;
+      let { achados } = montado;
+
+      // Busca de fora do Brasil: confere se essas ofertas já rodam aqui.
+      let brasilNovo = {};
+      if (busca.pais !== 'BR' && busca.pais !== 'ALL') {
+        const guardar = (entrada) => atualizarRadar(chave, (r) => ({ ...r, brasil: juntarCacheBrasil(r.brasil, entrada) }));
+        const checagem = await checarBrasil(achados, radar.brasil || {}, hoje, pausa, guardar);
+        brasilNovo = checagem.cache;
+        if (checagem.bloqueio) parado = 'bloqueio';
+        achados = R.aplicarBrasil(achados, { ...(radar.brasil || {}), ...brasilNovo }, hoje);
+      }
       // Rodar de novo no mesmo dia não pode apagar a comparação com ontem.
       const totalAnterior = anterior
         ? (anterior.data === hoje ? anterior.totalAnterior ?? null : anterior.total ?? null)
@@ -188,9 +237,11 @@ async function radarTick({ forcar = false, pausa = pausaPadrao } = {}) {
             ...r.resultados,
             [busca.id]: { data: hoje, rodadoEm: agoraLocal(), total: leitura.total, totalAnterior, primeira: primeiraRodada, achados }
           },
-          vistos: { ...r.vistos, [busca.id]: vistos }
+          vistos: { ...r.vistos, [busca.id]: vistos },
+          brasil: juntarCacheBrasil(r.brasil, brasilNovo)
         };
       });
+      if (parado) break;
     }
 
     await atualizarRadar(chave, (r) => {

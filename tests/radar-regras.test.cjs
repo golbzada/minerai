@@ -108,3 +108,71 @@ test('anunciante visto pela primeira vez hoje continua novo numa segunda rodada 
   const r = R.montarAchados(anuncios, { hoje: HOJE, vistos: { 999999: HOJE }, primeiraRodada: false });
   assert.equal(r.achados[0].novo, true);
 });
+
+// ---- Gringa x Brasil ----
+
+test('urls de checagem no Brasil: anunciante e site (frase exata)', () => {
+  assert.equal(R.urlAnuncianteNoPais('123456789', 'BR'), 'active_status=active&ad_type=all&country=BR&view_all_page_id=123456789&media_type=all');
+  assert.equal(
+    R.urlSiteNoPais('shop.pipitea.com', 'BR'),
+    'active_status=active&ad_type=all&country=BR&q=%22shop.pipitea.com%22&search_type=keyword_exact_phrase&media_type=all'
+  );
+});
+
+test('dominioDoLink ignora rede social e encurtador', () => {
+  assert.equal(R.dominioDoLink('https://www.loja.com/x?y=1'), 'loja.com');
+  assert.equal(R.dominioDoLink('http://instagram.com/perfil'), '');
+  assert.equal(R.dominioDoLink('https://l.facebook.com/l.php?u=x'), '');
+  assert.equal(R.dominioDoLink('https://wa.me/5511999'), '');
+  assert.equal(R.dominioDoLink('lixo'), '');
+});
+
+test('escolherParaChecarBrasil: só novas escalando, sem repetir checagem da semana, até o limite', () => {
+  const link = 'https://pipitea.com/x';
+  const achados = [
+    { pageId: '1', posicao: 1, novaEscalando: false, link },
+    { pageId: '2', posicao: 2, novaEscalando: true, link },
+    { pageId: '3', posicao: 3, novaEscalando: true, link },
+    { pageId: '5', posicao: 5, novaEscalando: true, link },
+    { pageId: '4', posicao: 4, novaEscalando: false, link }
+  ];
+  const cache = { 3: { data: '2026-10-10', termo: 'pipitea' }, 5: { data: '2026-10-10', termo: 'outro' } };
+  assert.deepEqual(R.escolherParaChecarBrasil(achados, cache, HOJE, 8), ['2', '5']);
+  assert.deepEqual(R.escolherParaChecarBrasil(achados, cache, HOJE, 1), ['2']);
+});
+
+test('aplicarBrasil: janela só com zero nos dois, ignora checagem velha ou de outro site', () => {
+  const link = 'https://pipitea.com/x';
+  const achados = [1, 2, 3, 4, 5].map((n) => ({ pageId: String(n), link }));
+  const cache = {
+    1: { data: HOJE, anunciante: 0, site: 0, termo: 'pipitea' },
+    2: { data: HOJE, anunciante: 3, site: 9, termo: 'pipitea' },
+    4: { data: '2026-09-20', anunciante: 0, site: 0, termo: 'pipitea' },
+    5: { data: HOJE, anunciante: 0, site: 0, termo: 'outro' }
+  };
+  const r = R.aplicarBrasil(achados, cache, HOJE);
+  assert.deepEqual(r[0].brasil, { anunciante: 0, site: 0, janela: true, data: HOJE });
+  assert.equal(r[1].brasil.janela, false);
+  assert.equal(r[2].brasil, undefined);
+  assert.equal(r[3].brasil, undefined);
+  assert.equal(r[4].brasil, undefined);
+});
+
+test('aplicarBrasil: site sem como conferir (rede social) não vira janela', () => {
+  const achados = [{ pageId: '6', link: 'https://instagram.com/x' }];
+  const cache = { 6: { data: HOJE, anunciante: 0, site: null, termo: '' } };
+  assert.deepEqual(R.aplicarBrasil(achados, cache, HOJE)[0].brasil, { anunciante: 0, site: null, janela: false, data: HOJE });
+});
+
+test('termoDoSite: marca distintiva, senão o domínio; nada para rede social, encurtador e checkout', () => {
+  assert.equal(R.termoDoSite('https://shop.pipitea.com/x'), 'pipitea');
+  assert.equal(R.termoDoSite('https://www.decorandoaleiseca.com.br/a'), 'decorandoaleiseca');
+  assert.equal(R.termoDoSite('https://slim.co'), 'slim.co');
+  assert.equal(R.termoDoSite('https://loja.com.br/oferta'), 'loja.com.br');
+  assert.equal(R.termoDoSite('https://pay.hotmart.com/X123'), '');
+  assert.equal(R.termoDoSite('https://pay.kiwify.com.br/abc'), '');
+  assert.equal(R.termoDoSite('https://bit.ly/abc'), '');
+  assert.equal(R.termoDoSite('https://t.me/canal'), '');
+  assert.equal(R.termoDoSite('http://instagram.com/perfil'), '');
+  assert.equal(R.termoDoSite('lixo'), '');
+});

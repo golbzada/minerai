@@ -25,7 +25,7 @@ const uuid = (n) => `00000000-0000-4000-8000-00000000000${n}`;
  * Monta o ambiente: ofertas no "banco", respostas da Biblioteca por anúncio e
  * por página, e o que já está guardado no chrome.storage.
  */
-function ambiente({ ofertas, anuncios = {}, paginas = {}, logado = true, estado = null, planoInativo = false, aoBuscarPagina = null, aoGravar = null }) {
+function ambiente({ ofertas, anuncios = {}, paginas = {}, sites = {}, logado = true, estado = null, planoInativo = false, aoBuscarPagina = null, aoGravar = null }) {
   const storage = {};
   if (logado) {
     storage.minerai_user = USER;
@@ -90,6 +90,12 @@ function ambiente({ ofertas, anuncios = {}, paginas = {}, logado = true, estado 
       credenciaisMeta.push(opcoes.credentials);
       const id = (u.match(/[?&]id=(\d+)/) || [])[1];
       if (id) return resposta(anuncios[id] ?? '<html></html>');
+      const site = (u.match(/[?&]q=([^&]*)/) || [])[1];
+      if (site) {
+        const valor = sites[decodeURIComponent(site)];
+        if (valor === 'falha') return resposta('', 503);
+        return resposta(`{"search_results_connection":{"count":${valor ?? 0},"edges":[]}}`);
+      }
       const pagina = u.match(/view_all_page_id=(\d+)/)[1];
       if (aoBuscarPagina) aoBuscarPagina({ pagina, ofertas });
       const pais = u.match(/country=([A-Z]+)/)[1];
@@ -350,4 +356,77 @@ test('acesso renovado no meio da rodada passa a ser usado nas próximas ofertas'
   });
   await amb.sw.rastreioTick(semPausa);
   assert.equal(amb.patches[amb.patches.length - 1].auth, `Bearer ${NOVO}`);
+});
+
+// ---- Gringa x Brasil no acervo ----
+
+function gringa(extra = {}) {
+  return {
+    id: uuid(1),
+    history: [],
+    status: 'testing',
+    page_id: '',
+    landing_page: 'https://www.shop.pipitea.com/oferta',
+    funnel_notes: notas('', { library_id: '90000100', start_date: diasAntes(5), country: 'US', ...extra })
+  };
+}
+
+test('oferta gringa: o rastreio confere o Brasil e guarda junto da medição', async () => {
+  const amb = ambiente({
+    ofertas: [gringa()],
+    anuncios: anunciosTres,
+    paginas: { '7000001:US': 40, '7000001:BR': 0 },
+    sites: { '"pipitea"': 0 }
+  });
+  await amb.sw.rastreioTick(semPausa);
+  const notas = amb.patches[0].corpo.funnel_notes;
+  assert.equal(amb.patches[0].corpo.ads_count, 40);
+  assert.match(notas, /"brasil_ads":0/);
+  assert.match(notas, /"brasil_site":0/);
+  assert.match(notas, /"brasil_at":"\d{4}-\d{2}-\d{2}"/);
+});
+
+test('oferta gringa já conferida nesta semana não confere de novo', async () => {
+  const amb = ambiente({
+    ofertas: [gringa({ brasil_ads: 2, brasil_site: 0, brasil_at: diasAntes(2) })],
+    anuncios: anunciosTres,
+    paginas: { '7000001:US': 40, '7000001:BR': 5 }
+  });
+  await amb.sw.rastreioTick(semPausa);
+  assert.ok(!amb.buscasMeta.some((u) => u.includes('country=BR')));
+  assert.match(amb.patches[0].corpo.funnel_notes, /"brasil_ads":2/);
+});
+
+test('oferta gringa: site que não respondeu não grava nada do Brasil', async () => {
+  const amb = ambiente({
+    ofertas: [gringa()],
+    anuncios: anunciosTres,
+    paginas: { '7000001:US': 40, '7000001:BR': 0 },
+    sites: { '"pipitea"': 'falha' }
+  });
+  await amb.sw.rastreioTick(semPausa);
+  assert.equal(amb.patches[0].corpo.ads_count, 40);
+  assert.doesNotMatch(amb.patches[0].corpo.funnel_notes, /brasil_/);
+});
+
+test('oferta gringa: desafio na checagem do Brasil grava a medição e para', async () => {
+  const desafio = "<script>function executeChallenge(){fetch('/x?challenge=3')}</script>";
+  const ofertas = [gringa(), { ...gringa(), id: uuid(2), funnel_notes: notas('', { library_id: '90000200', start_date: diasAntes(5), country: 'US' }) }];
+  const amb = ambiente({ ofertas, anuncios: anunciosTres, paginas: { '7000001:US': 40, '7000001:BR': desafio, '7000002:US': 5 } });
+  await amb.sw.rastreioTick(semPausa);
+  assert.equal(amb.patches.length, 1);
+  assert.equal(amb.patches[0].corpo.ads_count, 40);
+  assert.equal(amb.storage.minerai_rastreio.parado, 'bloqueio');
+});
+
+test('no máximo 30 checagens do Brasil por dia no rastreio', async () => {
+  const ofertas = Array.from({ length: 33 }, (_, i) => ({
+    ...gringa(),
+    id: `00000000-0000-4000-8000-${String(100 + i).padStart(12, '0')}`,
+    funnel_notes: notas('', { library_id: '90000100', start_date: diasAntes(5), country: 'US' })
+  }));
+  const amb = ambiente({ ofertas, anuncios: anunciosTres, paginas: { '7000001:US': 40, '7000001:BR': 0 }, sites: { '"pipitea"': 0 } });
+  await amb.sw.rastreioTick(semPausa);
+  const checadas = amb.buscasMeta.filter((u) => u.includes('country=BR') && u.includes('view_all_page_id')).length;
+  assert.equal(checadas, 30);
 });
