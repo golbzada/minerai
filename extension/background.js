@@ -14,6 +14,47 @@ const SUPABASE_ANON_KEY = 'sb_publishable_6uR1O7oSEjl_6Zyh_pHoUQ_uY5LnN7_';
 // cookie de site alheio. Não recolocar.
 const DASHBOARD_OFICIAL = 'https://mineraiofertas.vercel.app';
 
+// Prazos de rede. Sem eles, uma resposta que nunca chega deixava o botão
+// "Minerar oferta" em "Salvando..." para sempre (visto em 15/10/2026).
+// `self.MINERAI_PRAZOS` existe só para os testes encurtarem a espera.
+function prazos() {
+  return { rede: 20000, salvar: 90000, ...(self.MINERAI_PRAZOS || {}) };
+}
+
+/** fetch que desiste depois de `ms` (erro em português). */
+async function fetchComPrazo(url, opcoes = {}, ms = prazos().rede) {
+  const controle = new AbortController();
+  const limite = setTimeout(() => controle.abort(), ms);
+  try {
+    return await fetch(url, { ...opcoes, signal: controle.signal });
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw new Error('A internet demorou demais para responder. Tente de novo.');
+    throw e;
+  } finally {
+    clearTimeout(limite);
+  }
+}
+
+/**
+ * Roda um trabalho com teto de tempo e mantendo o service worker acordado
+ * (chamada de API a cada 20 s reinicia o relógio de ociosidade do Chrome).
+ */
+async function comVida(trabalho, ms) {
+  const vivo = setInterval(() => {
+    try { chrome.runtime.getPlatformInfo(() => {}); } catch (e) {}
+  }, 20000);
+  let limite = null;
+  const teto = new Promise((_, rejeitar) => {
+    limite = setTimeout(() => rejeitar(new Error('Salvar demorou demais. Tente de novo.')), ms);
+  });
+  try {
+    return await Promise.race([trabalho(), teto]);
+  } finally {
+    clearInterval(vivo);
+    clearTimeout(limite);
+  }
+}
+
 const DASHBOARD_URLS = [
   DASHBOARD_OFICIAL,
   'http://localhost:5173'
@@ -196,7 +237,7 @@ async function renovarSessao(session) {
   if (!refreshToken) return null;
 
   try {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+    const res = await fetchComPrazo(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
       method: 'POST',
       headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: refreshToken })
@@ -378,7 +419,7 @@ async function writeOffer(url, method, payload, token) {
 
   // O laço tolera uma remoção de coluna por volta, mais uma renovação de token.
   for (let attempt = 0; attempt <= OPTIONAL_COLUMNS.length + 1; attempt += 1) {
-    const res = await fetch(url, {
+    const res = await fetchComPrazo(url, {
       method,
       headers: supabaseHeaders(tokenAtual, { 'Prefer': 'return=representation' }),
       body: JSON.stringify(body)
@@ -441,7 +482,7 @@ async function writeOffer(url, method, payload, token) {
 /** Aba padrão do usuário (a primeira criada). */
 async function getDefaultTabId(userId, token) {
   try {
-    const res = await fetch(
+    const res = await fetchComPrazo(
       `${SUPABASE_URL}/rest/v1/tabs?user_id=eq.${userId}&select=id&order=created_at.asc&limit=1`,
       { headers: supabaseHeaders(token) }
     );
@@ -500,7 +541,7 @@ async function queryExistingOffer(userId, token, offerData, select) {
 
   for (const url of queries) {
     try {
-      const res = await fetch(url, { headers: supabaseHeaders(token) });
+      const res = await fetchComPrazo(url, { headers: supabaseHeaders(token) });
 
       if (!res.ok) {
         const errorText = await res.text();
@@ -513,7 +554,10 @@ async function queryExistingOffer(userId, token, offerData, select) {
 
       const rows = await res.json();
       if (rows?.length) return rows[0];
-    } catch (e) {}
+    } catch (e) {
+      // Rede falhou: melhor avisar do que criar uma oferta duplicada.
+      throw e;
+    }
   }
 
   return null;
@@ -579,7 +623,7 @@ async function snapshotAvatar(url) {
   if (!isFetchableImageUrl(url)) return null;
 
   try {
-    const res = await fetch(url);
+    const res = await fetchComPrazo(url);
     if (!res.ok) return null;
 
     const blob = await res.blob();
@@ -642,7 +686,7 @@ async function snapshotCreative(url) {
   if (!isFetchableImageUrl(url)) return null;
 
   try {
-    const res = await fetch(url);
+    const res = await fetchComPrazo(url);
     if (!res.ok) return null;
 
     const blob = await res.blob();
@@ -1048,7 +1092,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'SAVE_OFFER') {
-    saveCapturedOffer(message.offer)
+    comVida(() => saveCapturedOffer(message.offer), prazos().salvar)
       .then(res => sendResponse({ success: true, data: res }))
       .catch(err => sendResponse({ success: false, error: err.message }));
     return true;

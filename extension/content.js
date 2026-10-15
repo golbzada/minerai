@@ -77,7 +77,10 @@
     }
     try {
       chrome.runtime.sendMessage(message, (response) => {
+        // Porta fechada (a extensão reiniciou ou foi atualizada no meio): quem
+        // chamou precisa saber, senão o botão fica em "Salvando..." para sempre.
         if (chrome.runtime?.lastError) {
+          if (callback) callback(undefined, chrome.runtime.lastError.message || 'sem resposta');
           return;
         }
         if (callback) callback(response);
@@ -1992,6 +1995,9 @@
     );
   }
 
+  // Tempo máximo esperando a extensão salvar (ela mesma desiste antes disso).
+  const SALVAR_PRAZO_MS = 100000;
+
   async function handleCaptureOffer(cardData, btn) {
     if (!currentUser) {
       showToast('Faça login no Mineraí para salvar suas ofertas mineradas!');
@@ -2018,9 +2024,31 @@
 
     btn.innerHTML = `${icon('relogio')}<span class="minerai-btn-text">Salvando...</span>`;
 
+    // Se a extensão não responder (reiniciou, internet caiu no meio), o botão
+    // volta e avisa em vez de ficar em "Salvando..." para sempre.
+    let respondeu = false;
+    const prazo = setTimeout(() => {
+      if (respondeu) return;
+      respondeu = true;
+      btn.disabled = false;
+      btn.className = 'minerai-capture-btn mined-error';
+      btn.innerHTML = `${icon('x')}<span class="minerai-btn-text">Erro ao salvar</span>`;
+      showToast('A extensão demorou demais para salvar. Recarregue a página e tente de novo.', 6000);
+      setTimeout(() => {
+        btn.className = 'minerai-capture-btn';
+        btn.innerHTML = CAPTURE_IDLE_HTML;
+      }, 3000);
+    }, SALVAR_PRAZO_MS);
+
     safeSendMessage(
       { type: 'SAVE_OFFER', offer: data },
-      (response) => {
+      (response, erroDePorta) => {
+        if (respondeu) return;
+        respondeu = true;
+        clearTimeout(prazo);
+        if (erroDePorta && !response) {
+          response = { success: false, error: 'A extensão reiniciou no meio. Recarregue a página e tente de novo.' };
+        }
         btn.disabled = false;
 
         if (response && response.success) {
