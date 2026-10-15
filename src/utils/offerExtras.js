@@ -209,7 +209,7 @@ export function computeAlerts(offers, prefs = loadAlertPrefs()) {
 
     const days = resolveRunningDays(o);
     if (days >= prefs.diasLonga) {
-      alerts.push({ type: 'longa', severity: 'alta', offer: o, text: `Já são ${days} dias rodando.` });
+      alerts.push({ type: 'longa', severity: 'alta', offer: o, text: `Já são ${days} dias no ar.` });
     }
 
     // Com medições do anunciante, quem avisa queda é o "Decaindo" do rastreio

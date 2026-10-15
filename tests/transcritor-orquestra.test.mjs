@@ -185,3 +185,24 @@ test('a segunda tentativa só tem o tempo que sobrou do teto (a fila não fica p
   assert.ok(Date.now() - inicio < 190, `levou ${Date.now() - inicio} ms`);
   orquestra.encerrar();
 });
+
+test('progresso enquanto ouve (porcentagem) reinicia o vigia: motor vivo não é derrubado', async () => {
+  // Motor que avisa o andamento a cada 30 ms e só termina depois de 150 ms.
+  const devagar = (msg, motor) => {
+    motor.responder({ tipo: 'ouvindo', gpu: true });
+    let pct = 0;
+    const i = setInterval(() => {
+      pct += 20;
+      motor.responder({ tipo: 'progresso', progresso: { etapa: 'ouvindo', pct } });
+      if (pct >= 100) { clearInterval(i); motor.responder({ tipo: 'pronto', gpu: true, saida: PRONTO }); }
+    }, 30);
+  };
+  const { criarMotor, criados } = fabrica(devagar);
+  const orquestra = criarOrquestra({ criarMotor, limites: { ...LIMITES, vigiaMs: () => 60 } });
+  const visto = [];
+  const saida = await orquestra.ouvir(SOM, OPCOES, (p) => visto.push(p.pct));
+  assert.equal(saida.text, ' Olá.');
+  assert.equal(criados.length, 1, 'não refez no processador');
+  assert.deepEqual(visto.filter(Boolean), [20, 40, 60, 80, 100]);
+  orquestra.encerrar();
+});

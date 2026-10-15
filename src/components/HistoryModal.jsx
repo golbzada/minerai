@@ -76,7 +76,7 @@ export default function HistoryModal({ offer, onClose, onAddResult, onDeleteEntr
               />
             </label>
             <label className="field-sm">
-              <span>Anúncios Ativos</span>
+              <span>Anúncios ativos do anunciante</span>
               <input
                 type="number"
                 min="0"
@@ -101,7 +101,7 @@ export default function HistoryModal({ offer, onClose, onAddResult, onDeleteEntr
             <thead>
               <tr>
                 <th>Data</th>
-                <th>Anúncios Ativos</th>
+                <th>Anúncios ativos do anunciante</th>
                 <th>Variação</th>
                 <th style={{ textAlign: 'right' }}>Ação</th>
               </tr>

@@ -30,7 +30,12 @@ async function transformers() {
     env.allowLocalModels = false;
     env.useBrowserCache = true;
     env.backends.onnx.wasm.wasmPaths = PASTA_VENDOR;
-    env.backends.onnx.wasm.numThreads = 1; // sem isolamento entre origens não há threads
+    // Vários núcleos só com isolamento entre origens (COOP/COEP no manifest):
+    // sem ele não existe SharedArrayBuffer e o motor fica num núcleo só.
+    // Medido em 15/10/2026: vídeo de 47 s, 8 s com 4 núcleos (22 s com 1).
+    env.backends.onnx.wasm.numThreads = self.crossOriginIsolated
+      ? Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 2) - 1))
+      : 1;
   }
   return biblioteca;
 }
@@ -58,6 +63,39 @@ function medidorDeDownload(aoProgresso) {
     maior = Math.max(maior, Math.min(99, Math.round((feito / total) * 100)));
     aoProgresso({ etapa: 'modelo', pct: maior });
   };
+}
+
+/**
+ * Porcentagem enquanto ouve. O Whisper trabalha em pedaÃ§os de 30 s (com 5 s
+ * de sobreposiÃ§Ã£o): a cada trecho fechado sabemos atÃ© que segundo do vÃ­deo
+ * ele chegou. Sem isso a pessoa via "Transcrevendo..." por minutos sem
+ * saber se andava.
+ */
+function medidorDeEscuta(asr, pedido, avisar) {
+  const { WhisperTextStreamer } = biblioteca;
+  const duracao = pedido.audio.length / 16000;
+  const janela = (pedido.opcoes.chunk_length_s || 30) - (pedido.opcoes.stride_length_s || 0);
+  const precisao = asr.processor.feature_extractor.config.chunk_length / asr.model.config.max_source_positions;
+  let pedacos = 0;
+  let maior = 0;
+  let ultimo = 0;
+  const avisarAte = (segundo) => {
+    const agora = Date.now();
+    if (agora - ultimo < 500) return;
+    const pct = Math.min(99, Math.round((segundo / Math.max(1, duracao)) * 100));
+    if (pct <= maior) return;
+    maior = pct;
+    ultimo = agora;
+    avisar({ etapa: 'ouvindo', pct });
+  };
+  return new WhisperTextStreamer(asr.tokenizer, {
+    time_precision: precisao,
+    on_chunk_end: (fim) => avisarAte(pedacos * janela + fim),
+    on_finalize: () => {
+      pedacos += 1;
+      avisarAte(pedacos * janela);
+    }
+  });
 }
 
 const temPlaca = () => typeof navigator !== 'undefined' && Boolean(navigator.gpu);
@@ -95,7 +133,7 @@ self.onmessage = async (evento) => {
     const motor = await carregar(Boolean(pedido.semGpu), avisar);
     gpu = motor.gpu;
     self.postMessage({ tipo: 'ouvindo', gpu });
-    const saida = await motor.asr(pedido.audio, pedido.opcoes);
+    const saida = await motor.asr(pedido.audio, { ...pedido.opcoes, streamer: medidorDeEscuta(motor.asr, pedido, avisar) });
     self.postMessage({
       tipo: 'pronto',
       gpu,

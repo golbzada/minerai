@@ -22,6 +22,13 @@
   const CIRCUIT_BREAKER_MAX_TRIGGERS = 20;
   const CIRCUIT_BREAKER_WINDOW_MS = 2000;
   const CIRCUIT_BREAKER_PAUSE_MS = 3000;
+  // Onde a página mudou desde a última varredura (alvos das mutações). Com
+  // centenas de anúncios carregados, reler todos os cards e percorrer todos
+  // os textos da página a cada mutação era o que travava a Biblioteca.
+  // `varreduraCompleta` força o documento inteiro (primeira vez e Garimpar).
+  let raizesSujas = new Set();
+  let varreduraCompleta = true;
+  const RAIZES_MAX = 300; // acima disso é mais barato varrer tudo
 
   const PT_MONTHS = {
     'jan': 0, 'janeiro': 0,
@@ -324,7 +331,7 @@
       activeFilters.minAds = parseInt(minAdsInput.value, 10) || 0;
       activeFilters.minDays = parseInt(minDaysInput.value, 10) || 0;
 
-      scanAndEnhanceCards();
+      scanAndEnhanceCards({ completa: true });
       const count = applyAdFilters();
 
       const term = termInput.value.trim();
@@ -382,7 +389,9 @@
 
   function processMutationsBatch() {
     scanAndEnhanceCards();
-    updateVisibleCount();
+    // Filtro ativo vale também para os anúncios que a Biblioteca carregou agora.
+    if (activeFilters.minAds > 0 || activeFilters.minDays > 0) applyAdFilters();
+    else updateVisibleCount();
     if (currentSearchTerm && currentSearchTerm.length >= 2) {
       highlightKeyword(currentSearchTerm);
     }
@@ -393,20 +402,36 @@
       observerInstance.disconnect();
     }
 
-    observerInstance = new MutationObserver((mutations) => {
-      const isInternal = mutations.every(m => {
-        const target = m.target;
-        if (!target) return false;
-        return (
-          target.id === 'minerai-floating-panel' ||
-          target.closest?.('#minerai-floating-panel') ||
-          target.classList?.contains('minerai-injected') ||
-          target.closest?.('.minerai-injected') ||
-          target.classList?.contains('minerai-toast')
-        );
-      });
+    const ehInterna = (m) => {
+      const target = m.target;
+      if (!target) return false;
+      return Boolean(
+        target.id === 'minerai-floating-panel' ||
+        target.closest?.('#minerai-floating-panel') ||
+        target.classList?.contains('minerai-injected') ||
+        target.closest?.('.minerai-injected') ||
+        target.classList?.contains('minerai-toast')
+      );
+    };
 
-      if (!isInternal) {
+    observerInstance = new MutationObserver((mutations) => {
+      let externa = false;
+      mutations.forEach((m) => {
+        if (ehInterna(m)) return;
+        externa = true;
+        // Guarda onde mudou: a próxima varredura lê só esses pedaços.
+        const alvo = m.target && m.target.nodeType === Node.ELEMENT_NODE ? m.target : m.target && m.target.parentElement;
+        if (alvo) raizesSujas.add(alvo);
+        m.addedNodes.forEach((n) => {
+          if (n.nodeType === Node.ELEMENT_NODE) raizesSujas.add(n);
+        });
+      });
+      if (raizesSujas.size > RAIZES_MAX) {
+        raizesSujas = new Set();
+        varreduraCompleta = true;
+      }
+
+      if (externa) {
         handleMutationTrigger();
       }
     });
@@ -627,29 +652,42 @@
     return tight[tight.length - 1].el;
   }
 
-  function findAdCards() {
+  /** Cards já marcados em varreduras anteriores (consulta nativa, barata). */
+  function knownAdCards() {
+    return Array.from(document.querySelectorAll('[data-minerai-card="true"]'));
+  }
+
+  /**
+   * Todos os cards da página. `raizes` = só procurar cards novos dentro
+   * desses elementos (onde a página mudou); sem `raizes`, no documento todo.
+   */
+  function findAdCards(raizes = null) {
     // 1. Recupera todos os cards previamente marcados
-    const knownCards = Array.from(document.querySelectorAll('[data-minerai-card="true"]'));
+    const knownCards = knownAdCards();
     const cardSet = new Set(knownCards);
     const allCards = [...knownCards];
 
     // 2. Busca novos cards no DOM
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+    const origens = raizes ? raizes.filter((r) => r && r.isConnected) : [document.body];
+    origens.forEach((origem) => {
+      if (origem !== document.body && (origem.closest('.minerai-injected') || origem.closest(DIALOG_SELECTOR))) return;
+      const walker = document.createTreeWalker(origem, NodeFilter.SHOW_TEXT, null, false);
 
-    let node;
-    while ((node = walker.nextNode())) {
-      const text = node.nodeValue;
-      if (!text || !CARD_ID_TEXT.test(text)) continue;
-      const parent = node.parentElement;
-      if (!parent || parent.closest('.minerai-injected') || parent.closest(DIALOG_SELECTOR)) continue;
+      let node;
+      while ((node = walker.nextNode())) {
+        const text = node.nodeValue;
+        if (!text || !CARD_ID_TEXT.test(text)) continue;
+        const parent = node.parentElement;
+        if (!parent || parent.closest('.minerai-injected') || parent.closest(DIALOG_SELECTOR)) continue;
 
-      const candidate = resolveCardFromText(node);
-      if (candidate && !cardSet.has(candidate)) {
-        candidate.setAttribute('data-minerai-card', 'true');
-        cardSet.add(candidate);
-        allCards.push(candidate);
+        const candidate = resolveCardFromText(node);
+        if (candidate && !cardSet.has(candidate)) {
+          candidate.setAttribute('data-minerai-card', 'true');
+          cardSet.add(candidate);
+          allCards.push(candidate);
+        }
       }
-    }
+    });
 
     return allCards;
   }
@@ -1715,10 +1753,22 @@
   const DOWNLOAD_IDLE_HTML = `${icon('baixar')}<span class="minerai-btn-text">Baixar mídia</span>`;
   const CAPTURE_IDLE_HTML = `${icon('picareta')}<span class="minerai-btn-text">Minerar oferta</span>`;
 
-  function scanAndEnhanceCards() {
-    const cards = findAdCards();
+  function scanAndEnhanceCards({ completa = false } = {}) {
+    const tudo = completa || varreduraCompleta;
+    const raizes = tudo ? null : Array.from(raizesSujas);
+    raizesSujas = new Set();
+    varreduraCompleta = false;
+
+    const cards = findAdCards(raizes);
+    // Cards onde houve mutação: precisam ser relidos. Os outros ficam como estão.
+    const sujos = new Set();
+    (raizes || []).forEach((r) => {
+      const card = r.closest && r.closest('[data-minerai-card="true"]');
+      if (card) sujos.add(card);
+    });
 
     cards.forEach((card) => {
+      if (!tudo && cardDataCache.has(card) && !sujos.has(card)) return;
       const data = parseCardDetails(card);
       cardDataCache.set(card, data);
 
@@ -2012,7 +2062,7 @@
   // ============================================================================
 
   function applyAdFilters() {
-    const cards = findAdCards();
+    const cards = knownAdCards();
     let visibleCount = 0;
 
     const minAds = activeFilters.minAds || 0;
@@ -2050,7 +2100,7 @@
   }
 
   function updateVisibleCount() {
-    const cards = findAdCards();
+    const cards = knownAdCards();
     const visibleCards = cards.filter(c => !c.classList.contains('minerai-card-filtered-out'));
     const counterDisplay = document.getElementById('minerai-counter-display');
     if (counterDisplay) {
@@ -2131,7 +2181,7 @@
     fila: () => 'Na fila: outro vídeo está sendo transcrito antes deste.',
     baixando: () => 'Transcrevendo: pegando o vídeo...',
     modelo: (msg) => `Preparando o transcritor (só na primeira vez): ${msg.pct || 0}%`,
-    ouvindo: () => 'Transcrevendo a fala do vídeo...',
+    ouvindo: (msg) => (msg.pct ? `Transcrevendo a fala do vídeo... ${msg.pct}%` : 'Transcrevendo a fala do vídeo...'),
     pronto: (msg) => (msg.temFala ? `Roteiro do vídeo baixado: ${msg.nome}` : 'Esse vídeo não tem fala. O arquivo do roteiro avisa isso.'),
     erro: (msg) => `Não deu para transcrever: ${msg.erro || 'tente de novo.'}`
   };

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 const KEY = 'minerai_guias_ok';
 
@@ -28,6 +28,18 @@ function saveDone(id, done) {
  */
 export default function PageGuide({ id, why, steps }) {
   const [open, setOpen] = useState(() => !readDone()[id]);
+  // "Entendi" primeiro anima o fechamento (0,28 s); o bloco só sai da tela no
+  // fim. O temporizador garante o fechamento mesmo se a animação não rodar
+  // (aba em segundo plano, animações desligadas no sistema).
+  const [fechando, setFechando] = useState(false);
+  useEffect(() => {
+    if (!fechando) return undefined;
+    const t = setTimeout(() => {
+      setFechando(false);
+      setOpen(false);
+    }, 320);
+    return () => clearTimeout(t);
+  }, [fechando]);
 
   if (!open) {
     return (
@@ -47,7 +59,10 @@ export default function PageGuide({ id, why, steps }) {
   }
 
   return (
-    <section className="page-guide" aria-label="Como usar esta página">
+    <section
+      className={`page-guide${fechando ? ' page-guide-fechando' : ''}`}
+      aria-label="Como usar esta página"
+    >
       <div className="page-guide-head">
         <div>
           <p className="page-guide-title">Como usar esta página</p>
@@ -57,8 +72,8 @@ export default function PageGuide({ id, why, steps }) {
           type="button"
           className="mini-btn"
           onClick={() => {
-            setOpen(false);
             saveDone(id, true);
+            setFechando(true);
           }}
         >
           Entendi
@@ -66,7 +81,7 @@ export default function PageGuide({ id, why, steps }) {
       </div>
       <ol className="page-guide-steps">
         {steps.map((step, i) => (
-          <li key={i}>
+          <li key={i} style={{ '--i': i }}>
             <span className="funil-step-num">{i + 1}</span>
             <span>{step}</span>
           </li>

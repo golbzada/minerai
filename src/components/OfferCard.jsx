@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Chart from './Chart';
 import StarRating from './StarRating';
 import StageBadge from './StageBadge';
-import { normalizeHistory, resolveRunningDays, resolvePageActiveAds, decodeNotes, deadSince } from '../utils/offerMeta';
+import { normalizeHistory, resolveRunningDays, decodeNotes, deadSince } from '../utils/offerMeta';
 import { safeHttpUrl, safeImageSrc, safeCreativeThumb } from '../utils/url';
 import { getExtras, STAGES } from '../utils/offerExtras';
 import { brasilDaOferta, textoBrasil } from '../utils/gringa';
@@ -76,7 +76,6 @@ export default function OfferCard({
 
   const runningDays = resolveRunningDays(offer);
   const adsCount = offer.ads_count != null ? Number(offer.ads_count) : 1;
-  const pageAds = resolvePageActiveAds(offer);
   const notesText = offer.notes ?? decodeNotes(offer.funnel_notes).notes;
 
   let historyList = normalizeHistory(offer.history);
@@ -197,15 +196,12 @@ export default function OfferCard({
             )}
 
             <p className="page-id">
-              <span title="Tempo de veiculação, atualizado automaticamente todo dia">
-                ⏳ {runningDays} {runningDays === 1 ? 'dia rodando' : 'dias rodando'}
+              <span title="Há quanto tempo este anúncio está no ar (conta sozinho todo dia)">
+                ⏳ {runningDays} {runningDays === 1 ? 'dia no ar' : 'dias no ar'}
               </span>
-              <span title="Anúncios ativos na última medição">📊 {adsCount} ativos</span>
-              {pageAds && (
-                <span title="Total de anúncios ativos do anunciante, lido quando a oferta foi minerada">
-                  🏢 {pageAds} do anunciante
-                </span>
-              )}
+              <span title="Quantos anúncios o anunciante tem ativos na Biblioteca, na última medição (a extensão mede uma vez por dia)">
+                📊 {adsCount} {adsCount === 1 ? 'anúncio ativo' : 'anúncios ativos'}
+              </span>
             </p>
 
             <p className="page-id page-id-line">

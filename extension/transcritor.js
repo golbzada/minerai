@@ -90,6 +90,10 @@ export function criarOrquestra({ criarMotor = motorPadrao, limites = LIMITES } =
       };
       // Acabou o prazo: não há tempo para outra tentativa. Se estava na placa,
       // ela travou (ainda carregando, antes do vigia existir).
+      const armarVigia = () => {
+        clearTimeout(vigia);
+        vigia = setTimeout(() => terminar(new Error(DEMOROU)), limites.vigiaMs(naPlaca, som.duracao));
+      };
       const teto = setTimeout(() => {
         const erro = new Error(DEMOROU);
         erro.placaTravou = naPlaca;
@@ -98,11 +102,14 @@ export function criarOrquestra({ criarMotor = motorPadrao, limites = LIMITES } =
       atual.onerror = (e) => terminar(new Error((e && e.message) || 'O motor do transcritor parou. Tente de novo.'));
       atual.onmessage = (evento) => {
         const m = evento.data || {};
-        if (m.tipo === 'progresso') aoProgresso?.(m.progresso);
-        else if (m.tipo === 'ouvindo') {
+        if (m.tipo === 'progresso') {
+          aoProgresso?.(m.progresso);
+          // Andamento Ã© sinal de vida: o vigia recomeÃ§a a contar.
+          if (vigia) armarVigia();
+        } else if (m.tipo === 'ouvindo') {
           naPlaca = Boolean(m.gpu);
           aoProgresso?.({ etapa: 'ouvindo' });
-          vigia = setTimeout(() => terminar(new Error(DEMOROU)), limites.vigiaMs(naPlaca, som.duracao));
+          armarVigia();
         } else if (m.tipo === 'pronto') terminar(null, m.saida);
         else if (m.tipo === 'erro') {
           if (typeof m.gpu === 'boolean') naPlaca = m.gpu;

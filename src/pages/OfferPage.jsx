@@ -434,7 +434,7 @@ function CompareTable({ a, b }) {
   const rows = [
     ['Nicho', (o) => o.niche],
     ['Status', (o) => STATUS_CONFIG[resolveStatus(o)]?.label || resolveStatus(o)],
-    ['Dias rodando', (o) => resolveRunningDays(o)],
+    ['Dias no ar', (o) => resolveRunningDays(o)],
     ['Anúncios ativos', (o) => o.ads_count ?? 0],
     ['Medições', (o) => normalizeHistory(o.history).length],
     ['Nota', (o) => '★'.repeat(getExtras(o).rating) || '—'],

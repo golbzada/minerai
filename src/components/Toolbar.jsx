@@ -62,7 +62,7 @@ export default function Toolbar({
         <option value="oldest">Mais antigas</option>
         <option value="most_ads">Mais anúncios</option>
         <option value="least_ads">Menos anúncios</option>
-        <option value="running_days">Mais dias rodando</option>
+        <option value="running_days">Mais dias no ar</option>
       </select>
     </section>
   );

@@ -50,6 +50,15 @@ No botão **Baixar mídia** da barra da extensão na Biblioteca, quando o anúnc
   volta inteira.
 - Erro desconhecido aparece com um pedaço da mensagem técnica entre
   parênteses, para o print do cliente dizer o que aconteceu.
+- Porcentagem enquanto ouve (15/10/2026): o worker usa o `WhisperTextStreamer`
+  (`on_chunk_end`/`on_finalize`) para saber até que segundo do vídeo o
+  Whisper chegou; a aba mostra "Transcrevendo a fala do vídeo... 40%". Cada
+  aviso de andamento também reinicia o vigia da placa de vídeo.
+- Processador com vários núcleos (15/10/2026): o manifest liga COOP/COEP
+  (`cross_origin_embedder_policy: require-corp`), o que dá `SharedArrayBuffer`
+  às páginas da extensão; o motor usa até 4 threads do wasm. Medido: vídeo de
+  47 s em 8 s no processador (era ~22 s num núcleo). As páginas da extensão
+  não carregam nada de outra origem sem CORS, então o COEP não quebra nada.
 - Vídeo sem fala: o `.txt` diz que não há fala para transcrever.
 - Imagem: não muda nada.
 
