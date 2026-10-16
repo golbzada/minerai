@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import useRevelar from '../utils/useRevelar';
 import Topbar from './Topbar';
 import Sidebar, { BottomBar } from './Sidebar';
 import { AppDataProvider, useAppData } from '../context/AppData';
@@ -22,6 +23,9 @@ const COLLAPSE_KEY = 'minerai_sidebar_collapsed';
  * Casca do painel autenticado: menu lateral + conteúdo da página atual.
  * O App continua cuidando de login, link de share e redefinição de senha.
  */
+// O que surge ao rolar: um bloco repetido por lista, nunca o que se arrasta.
+const REVELAR = '.board > .offer-item, .radar-grid > *, .insight-grid > *, .alert-list > *, .share-list > *, .modelagem-list > *';
+
 export default function Workspace({ user, onLogout, onUpdateUser }) {
   return (
     <AppDataProvider user={user} onUserChange={onUpdateUser} onLogout={onLogout}>
@@ -34,6 +38,9 @@ function Shell() {
   const data = useAppData();
   const path = useRoute();
   const route = useMemo(() => matchRoute(path), [path]);
+  // Blocos que surgem ao rolar (cards do acervo, radar, inteligência...).
+  const conteudoRef = useRef(null);
+  useRevelar(conteudoRef, REVELAR, route.page);
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(COLLAPSE_KEY) === '1';
@@ -157,7 +164,11 @@ function Shell() {
             </p>
           )}
 
-          {pageEl}
+          {/* A chave por página remonta só o conteúdo da direita: ele entra
+              suave a cada troca no menu, e o menu fica parado. */}
+          <div className="page-enter" key={route.page} ref={conteudoRef}>
+            {pageEl}
+          </div>
         </main>
       </div>
 

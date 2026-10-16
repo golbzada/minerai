@@ -1,107 +1,65 @@
 import React from 'react';
 
-export default function Chart({ history = [] }) {
-  if (!history || !history.length) {
-    return <div className="chart-empty">Sem histórico diário.</div>;
+function diaMes(iso) {
+  const m = String(iso || '').match(/^\d{4}-(\d{2})-(\d{2})/);
+  return m ? `${m[2]}/${m[1]}` : '';
+}
+
+const SETA = { subiu: '▲', caiu: '▼', estavel: '■', unica: '●' };
+
+/**
+ * Evolução da oferta em um olhar: só o começo e a medição mais recente, mais
+ * uma frase ("Caiu de 42 para 29 anúncios ativos desde 13/10"). O dia a dia
+ * fica no histórico. `resumo` vem de resumoDaEvolucao (utils/evolucao.js).
+ */
+export default function Chart({ resumo }) {
+  if (!resumo || resumo.direcao === 'vazia') {
+    return <div className="chart-empty">{resumo?.frase || 'Sem medições ainda.'}</div>;
   }
 
-  // Normaliza os dados do histórico com segurança total contra undefined/NaN/Invalid Date
-  const normalizedHistory = history.map((item, idx) => {
-    const count = Number(item.count ?? item.ads_count ?? item.results_count ?? 0);
-    let rawDate = item.date || item.result_date || item.created_at;
-    let dateFormatted = '';
-
-    if (!rawDate) {
-      const today = new Date();
-      dateFormatted = today.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-    } else if (typeof rawDate === 'string') {
-      if (rawDate.includes('T')) {
-        try {
-          const d = new Date(rawDate);
-          dateFormatted = !isNaN(d.getTime())
-            ? d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-            : rawDate.slice(0, 10);
-        } catch (e) {
-          dateFormatted = rawDate.slice(0, 10);
-        }
-      } else if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
-        const parts = rawDate.split('-');
-        dateFormatted = `${parts[2]}/${parts[1]}`;
-      } else {
-        dateFormatted = rawDate;
-      }
-    } else {
-      dateFormatted = 'Hoje';
-    }
-
-    return {
-      id: idx,
-      count: isNaN(count) ? 0 : count,
-      dateFormatted: dateFormatted || 'Hoje'
-    };
-  });
-
-  const counts = normalizedHistory.map((item) => item.count);
-  const maxVal = Math.max(...counts, 1);
-  const minVal = Math.min(...counts, 0);
-  const range = Math.max(maxVal - minVal, 1);
-
-  // Quando tem 1 medição (ou todas iguais), gera a pirâmide dourada que culmina no halo central (como na imagem 2)
-  let pointsStr = '';
-  if (normalizedHistory.length === 1) {
-    pointsStr = '50,24';
-  } else {
-    pointsStr = normalizedHistory
-      .map((item, idx) => {
-        const x = 8 + (idx / (normalizedHistory.length - 1)) * 84;
-        const y = 82 - ((item.count - minVal) / range) * 58;
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      })
-      .join(' ');
-  }
-
-  const pointList = pointsStr.split(' ');
+  const { direcao, inicio, fim } = resumo;
+  const unica = direcao === 'unica';
+  // Dois pontos na mesma escala: o maior fica em cima.
+  const menor = Math.min(inicio.count, fim.count);
+  const maior = Math.max(inicio.count, fim.count);
+  const altura = (v) => (maior === menor ? 18 : 30 - ((v - menor) / (maior - menor)) * 22);
+  const y1 = unica ? 18 : altura(inicio.count);
+  const y2 = unica ? 18 : altura(fim.count);
 
   return (
-    <div className="chart-wrap">
-      <svg
-        className="chart"
-        viewBox="0 0 100 100"
-        preserveAspectRatio="none"
-        aria-label="Evolução dos resultados"
-      >
-        <polyline
-          className="chart-area"
-          points={normalizedHistory.length === 1 ? '8,88 50,24 92,88' : `8,88 ${pointsStr} 92,88`}
-        />
-        <polyline
-          className="chart-line"
-          points={normalizedHistory.length === 1 ? '8,88 50,24 92,88' : pointsStr}
-        />
-        {normalizedHistory.map((item, idx) => {
-          const coords = pointList[idx] || (normalizedHistory.length === 1 ? '50,24' : '50,50');
-          const [cx, cy] = coords.split(',');
-          return (
-            <circle
-              key={item.id}
-              cx={cx}
-              cy={cy}
-              r="2.6"
-            >
-              <title>{`${item.dateFormatted}: ${item.count} anúncios`}</title>
-            </circle>
-          );
-        })}
-      </svg>
-
-      <div className="chart-labels">
-        {normalizedHistory.slice(-5).map((item) => (
-          <span key={item.id}>
-            <b>{item.count}</b>
-            {item.dateFormatted}
-          </span>
-        ))}
+    <div className={`chart-wrap chart-${direcao}`}>
+      <div className="chart-plot">
+        <svg className="chart" viewBox="0 0 100 36" preserveAspectRatio="none" aria-hidden="true">
+          {unica ? (
+            <line className="chart-guia" x1="6" y1="18" x2="94" y2="18" />
+          ) : (
+            <>
+              <polygon className="chart-area" points={`6,36 6,${y1} 94,${y2} 94,36`} />
+              <line className="chart-line" x1="6" y1={y1} x2="94" y2={y2} />
+            </>
+          )}
+        </svg>
+        {/* Pontos fora do SVG esticado: ficam redondos em qualquer largura. */}
+        {!unica && <span className="chart-dot" style={{ left: '6%', top: `${(y1 / 36) * 100}%` }} />}
+        <span className="chart-dot is-fim" style={{ left: unica ? '50%' : '94%', top: `${(y2 / 36) * 100}%` }} />
       </div>
+
+      <div className={`chart-labels ${unica ? 'is-unica' : ''}`}>
+        {!unica && (
+          <span>
+            <b>{inicio.count}</b>
+            {diaMes(inicio.date)} · início
+          </span>
+        )}
+        <span>
+          <b>{fim.count}</b>
+          {diaMes(fim.date)} · {unica ? 'primeira medição' : 'última'}
+        </span>
+      </div>
+
+      <p className="chart-frase">
+        <span className="chart-seta" aria-hidden="true">{SETA[direcao]}</span> {resumo.frase}
+      </p>
     </div>
   );
 }

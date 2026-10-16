@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Chart from '../components/Chart';
+import { resumoDaEvolucao } from '../utils/evolucao';
 import StarRating from '../components/StarRating';
 import StageBadge from '../components/StageBadge';
 import TagEditor from '../components/TagEditor';
@@ -367,7 +368,7 @@ export default function OfferPage({ id }) {
 
           <div className="panel">
             <p className="eyebrow">Histórico de medições</p>
-            <Chart history={history.length ? history : [{ date: todayIso(), count: offer.ads_count ?? 0 }]} />
+            <Chart resumo={resumoDaEvolucao(history.length ? history : [{ date: todayIso(), count: offer.ads_count ?? 0 }])} />
             {!locked && (
               <form className="history-add-box" onSubmit={addMeasurement}>
                 <div className="history-inputs">

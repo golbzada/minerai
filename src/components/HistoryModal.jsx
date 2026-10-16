@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { normalizeHistory, todayIso } from '../utils/offerMeta';
+import { todayIso } from '../utils/offerMeta';
+import { linhasDoHistorico, resumoDaEvolucao } from '../utils/evolucao';
 import useLockBodyScroll from '../utils/useLockBodyScroll';
 
 export default function HistoryModal({ offer, onClose, onAddResult, onDeleteEntry, readOnly = false }) {
@@ -11,7 +12,10 @@ export default function HistoryModal({ offer, onClose, onAddResult, onDeleteEntr
 
   // Aceita tanto o formato do Supabase ({date, count}) quanto o legado
   // ({result_date, results_count}) sem quebrar a tela.
-  const history = normalizeHistory(offer.history);
+  const history = linhasDoHistorico(offer.history);
+  const resumo = resumoDaEvolucao(offer.history);
+  const marca = typeof offer.meta?.anunciante_nome === 'string' ? offer.meta.anunciante_nome.trim() : '';
+  const temAntiga = history.some((h) => h.antiga);
 
   async function handleAddEntry(e) {
     e.preventDefault();
@@ -62,6 +66,21 @@ export default function HistoryModal({ offer, onClose, onAddResult, onDeleteEntr
           Oferta: <strong>{offer.name}</strong>
         </p>
 
+        <div className={`history-explica chart-${resumo.direcao}`}>
+          <p className="history-explica-frase">{resumo.frase}</p>
+          <p>
+            Cada linha é quantos anúncios {marca ? <strong>{marca}</strong> : 'o anunciante'} tinha ativos na
+            Biblioteca naquele dia{marca ? ' (é quem paga este anúncio em parceria)' : ''}. A extensão mede sozinha
+            uma vez por dia; o <strong>+ Salvar medição</strong> serve para corrigir à mão.
+          </p>
+          {temAntiga && (
+            <p className="history-explica-antiga">
+              Linhas marcadas como <em>contagem antiga</em> mediam só os anúncios daquele criativo, não o total do
+              anunciante: ficam fora da variação.
+            </p>
+          )}
+        </div>
+
         {/* Add Entry Form */}
         {!readOnly && (
         <form className="history-add-box" onSubmit={handleAddEntry}>
@@ -107,12 +126,9 @@ export default function HistoryModal({ offer, onClose, onAddResult, onDeleteEntr
               </tr>
             </thead>
             <tbody>
-              {history.map((item, idx) => {
-                const prev = idx > 0 ? history[idx - 1] : null;
-                const diff = prev ? item.count - prev.count : 0;
-                const percent = prev && prev.count > 0
-                  ? Math.round((diff / prev.count) * 100)
-                  : 0;
+              {history.map((item) => {
+                const diff = item.diff;
+                const percent = item.pct ?? 0;
 
                 let dateFormatted = item.date;
                 try {
@@ -124,7 +140,7 @@ export default function HistoryModal({ offer, onClose, onAddResult, onDeleteEntr
                 } catch (e) {}
 
                 return (
-                  <tr key={item.date}>
+                  <tr key={item.date} className={item.antiga ? "history-row-antiga" : undefined}>
                     <td>
                       <strong>{dateFormatted}</strong>
                     </td>
@@ -132,8 +148,10 @@ export default function HistoryModal({ offer, onClose, onAddResult, onDeleteEntr
                       <span className="ads-pill">{item.count} ads</span>
                     </td>
                     <td>
-                      {idx === 0 ? (
-                        <span className="growth-neutral">Medição Inicial</span>
+                      {item.antiga ? (
+                        <span className="growth-neutral" title="Contava só os anúncios daquele criativo">contagem antiga</span>
+                      ) : item.primeira ? (
+                        <span className="growth-neutral">Primeira medição</span>
                       ) : diff > 0 ? (
                         <span className="growth-up">+{diff} (+{percent}%) 📈</span>
                       ) : diff < 0 ? (

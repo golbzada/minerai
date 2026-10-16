@@ -59,3 +59,15 @@ test('anotações enormes não cortam os dados escondidos da oferta', () => {
   assert.equal(lido.fav, true);
   assert.equal(lido.page_id_real, '999999999');
 });
+
+test('anúncio em parceria guarda o nome da marca que paga (dona do total)', () => {
+  const dados = bg.sanitizeOfferData({ pageIdReal: '113003031754455', anuncianteNome: 'Decorando a Lei Seca', pageActiveAds: 740 });
+  const meta = plain(bg.buildMeta(dados, null));
+  assert.equal(meta.anunciante_nome, 'Decorando a Lei Seca');
+});
+
+test('reminerar sem parceria apaga o nome antigo da marca', () => {
+  const existente = { funnel_notes: '[[minerai:{"v":1,"anunciante_nome":"Marca Velha"}]]' };
+  const meta = plain(bg.buildMeta(bg.sanitizeOfferData({ pageIdReal: '999999999' }), existente));
+  assert.equal(meta.anunciante_nome, undefined);
+});

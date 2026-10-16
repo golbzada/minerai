@@ -241,3 +241,29 @@ test('precisaChecarBrasil: só oferta de fora, uma vez por semana', () => {
   assert.equal(R.precisaChecarBrasil({}, HOJE), false);
   assert.equal(R.precisaChecarBrasil({ country: 'US', dead_since: diasAntes(2) }, HOJE), false);
 });
+
+// Formato real (Biblioteca, 16/10/2026): anúncio em parceria "Concurseira lá
+// vou eu. com Decorando a Lei Seca". Quem paga (e tem os 740 anúncios) é a
+// página do `branded_content`; o `snapshot.page_name` é a criadora.
+const PARCERIA = '"ad_archive_id":"1937333610143013","collation_id":null,"collation_count":null,"page_id":"113003031754455",' +
+  '"snapshot":{"branded_content":{"page_id":"113003031754455","page_is_deleted":false,"page_profile_uri":"https:\/\/www.facebook.com\/decorandoaleisecaconcursoseoab\/",' +
+  '"page_name":"Decorando a Lei Seca Cursos Para Concursos E OAB"},"page_id":"719643521516906","page_is_deleted":false,' +
+  '"page_profile_uri":"https:\/\/www.facebook.com\/concurseiralavoueu\/","byline":null,"disclaimer_label":null,' +
+  '"page_name":"Concurseira l\u00e1 vou eu.","is_active":true}';
+
+test('lerParceria: anúncio em parceria diz quem paga e quem aparece', () => {
+  assert.deepEqual((R.lerParceria(PARCERIA, '1937333610143013')), {
+    anunciante: 'Decorando a Lei Seca Cursos Para Concursos E OAB',
+    criador: 'Concurseira lá vou eu.'
+  });
+});
+
+test('lerParceria: anúncio comum devolve null', () => {
+  const html = '"ad_archive_id":"55","page_id":"999999999","snapshot":{"branded_content":null,"page_id":"999999999","page_name":"Loja X"},"is_active":true';
+  assert.equal(R.lerParceria(html, '55'), null);
+});
+
+test('lerParceria: não lê a parceria do anúncio vizinho', () => {
+  const html = PARCERIA + ',{"ad_archive_id":"222","page_id":"333333333","snapshot":{"branded_content":null,"page_name":"Outro"}}';
+  assert.equal(R.lerParceria(html, '222'), null);
+});

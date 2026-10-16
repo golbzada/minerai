@@ -165,6 +165,8 @@ function sanitizeOfferData(source) {
     // ID real da página (lido do próprio anúncio), país da busca e se o
     // anúncio salvo estava no ar: base do rastreio diário.
     pageIdReal: safeDigits(src.pageIdReal),
+    // Anúncio em parceria: nome da marca que paga (dona do total acima).
+    anuncianteNome: clip(String(src.anuncianteNome || '').trim(), OFFER_LIMITS.name),
     country: safeCountry(src.country),
     adActive: typeof src.adActive === 'boolean' ? src.adActive : null,
     pageId: safeDigits(src.pageId),
@@ -582,6 +584,8 @@ function buildMeta(offerData, existing) {
       ? { page_active_ads: offerData.pageActiveAds, page_active_ads_at: todayIso() }
       : {}),
     ...(offerData.pageIdReal ? { page_id_real: offerData.pageIdReal } : {}),
+    // Só com a leitura feita agora (pageIdReal): parceria lida ou desfeita.
+    ...(offerData.pageIdReal ? { anunciante_nome: offerData.anuncianteNome || undefined } : {}),
     ...(offerData.country ? { country: offerData.country } : {}),
     ...(typeof offerData.adActive === 'boolean' ? { ad_active: offerData.adActive } : {}),
     source: 'extension',

@@ -3,6 +3,7 @@ import Chart from './Chart';
 import StarRating from './StarRating';
 import StageBadge from './StageBadge';
 import { normalizeHistory, resolveRunningDays, decodeNotes, deadSince } from '../utils/offerMeta';
+import { resumoDaEvolucao } from '../utils/evolucao';
 import { safeHttpUrl, safeImageSrc, safeCreativeThumb } from '../utils/url';
 import { getExtras, STAGES } from '../utils/offerExtras';
 import { brasilDaOferta, textoBrasil } from '../utils/gringa';
@@ -73,6 +74,9 @@ export default function OfferCard({
   // Página do Facebook (quem anuncia), quando é diferente do nome do produto.
   const pageName = typeof offer.meta?.page_name === 'string' ? offer.meta.page_name.trim() : '';
   const showPageName = pageName && pageName.toLowerCase() !== (offer.name || '').trim().toLowerCase();
+  // Anúncio em parceria: o total de anúncios é da marca que paga, não da
+  // página que aparece no anúncio (ex.: Concurseira com Decorando a Lei Seca).
+  const marcaDaParceria = typeof offer.meta?.anunciante_nome === 'string' ? offer.meta.anunciante_nome.trim() : '';
 
   const runningDays = resolveRunningDays(offer);
   const adsCount = offer.ads_count != null ? Number(offer.ads_count) : 1;
@@ -87,6 +91,7 @@ export default function OfferCard({
   }
 
   const historyCount = historyList.length;
+  const resumo = resumoDaEvolucao(historyList);
 
   // Sem link válido a área vira um bloco simples, em vez de um <a> sem href.
   const PhotoWrapper = libraryUrl ? 'a' : 'div';
@@ -185,9 +190,16 @@ export default function OfferCard({
             ) : (
               <h2 title={offer.name}>{offer.name}</h2>
             )}
-            {showPageName && (
+            {marcaDaParceria ? (
+              <p
+                className="card-page-name"
+                title={`Anúncio em parceria: quem paga é ${marcaDaParceria}. Os anúncios ativos contados são dela.`}
+              >
+                parceria com {marcaDaParceria}
+              </p>
+            ) : showPageName ? (
               <p className="card-page-name" title="Página do Facebook que anuncia">por {pageName}</p>
-            )}
+            ) : null}
 
             {!readOnly && onRate && (
               <div className="card-rating">
@@ -199,7 +211,13 @@ export default function OfferCard({
               <span title="Há quanto tempo este anúncio está no ar (conta sozinho todo dia)">
                 ⏳ {runningDays} {runningDays === 1 ? 'dia no ar' : 'dias no ar'}
               </span>
-              <span title="Quantos anúncios o anunciante tem ativos na Biblioteca, na última medição (a extensão mede uma vez por dia)">
+              <span
+                title={
+                  marcaDaParceria
+                    ? `Anúncios ativos de ${marcaDaParceria} (quem paga este anúncio em parceria), na última medição`
+                    : 'Quantos anúncios o anunciante tem ativos na Biblioteca, na última medição (a extensão mede uma vez por dia)'
+                }
+              >
                 📊 {adsCount} {adsCount === 1 ? 'anúncio ativo' : 'anúncios ativos'}
               </span>
             </p>
@@ -298,15 +316,17 @@ export default function OfferCard({
         className="tracker"
         onClick={() => onOpenHistory && onOpenHistory(offer)}
         style={{ cursor: onOpenHistory ? 'pointer' : 'default' }}
-        title={onOpenHistory ? 'Clique para abrir o histórico detalhado' : ''}
+        title={onOpenHistory ? 'Ver todas as medições, dia a dia' : ''}
       >
         <div className="tracker-head">
-          <div>
-            <span>Evolução diária</span>
-            <strong>{historyCount} medições {onOpenHistory ? '· Ver Detalhes ➔' : ''}</strong>
-          </div>
+          <span>Anúncios ativos</span>
+          {onOpenHistory && (
+            <strong>
+              {historyCount} {historyCount === 1 ? 'medição' : 'medições'} · ver dia a dia ➔
+            </strong>
+          )}
         </div>
-        <Chart history={historyList} />
+        <Chart resumo={resumo} />
       </section>
     </article>
   );

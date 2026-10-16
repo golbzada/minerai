@@ -89,6 +89,42 @@
     return { pageId, ativo };
   }
 
+  /** Só o trecho deste anúncio (até o próximo `ad_archive_id`). */
+  function trechoDoAnuncio(texto, libraryId) {
+    const at = texto.indexOf(`"ad_archive_id":"${libraryId}"`);
+    if (!libraryId || at < 0) return '';
+    let depois = texto.slice(at, at + 4000);
+    const proximo = depois.indexOf('"ad_archive_id":', 1);
+    if (proximo > 0) depois = depois.slice(0, proximo);
+    return depois;
+  }
+
+  function textoJson(cru) {
+    try {
+      return String(JSON.parse(cru)).slice(0, 120);
+    } catch (e) {
+      return '';
+    }
+  }
+
+  /**
+   * Anúncio em parceria ("Criadora com Marca"): quem paga é a página do
+   * `branded_content` — é dela o total de anúncios medido — e quem aparece no
+   * anúncio é a do `snapshot`. Sem isso o card dizia "Concurseira: 740
+   * anúncios" e a página da Concurseira tinha zero (visto em 16/10/2026).
+   * `null` = anúncio comum.
+   */
+  function lerParceria(html, libraryId) {
+    const trecho = trechoDoAnuncio(String(html || ''), libraryId);
+    const marca = trecho.match(/"branded_content":\{"page_id":"\d+"[^{}]*?"page_name":("(?:[^"\\]|\\.)*")\}/);
+    if (!marca) return null;
+    const anunciante = textoJson(marca[1]);
+    if (!anunciante) return null;
+    const depoisDaMarca = trecho.slice(marca.index + marca[0].length);
+    const criadora = depoisDaMarca.match(/"page_name":("(?:[^"\\]|\\.)*")/);
+    return { anunciante, criador: criadora ? textoJson(criadora[1]) : '' };
+  }
+
   /** Total de anúncios ativos (o "~N resultados"); null quando não veio. */
   function lerTotal(html) {
     const m = String(html || '').match(/"search_results_connection":\{"count":(\d+)/);
@@ -331,6 +367,7 @@
     KIND,
     diffDias,
     lerAnuncio,
+    lerParceria,
     lerTotal,
     pareceBloqueio,
     historyEntry,

@@ -1224,9 +1224,10 @@
    * devolve zero anúncios para ele.
    */
   async function fetchAnuncio(libraryId) {
-    if (!/^\d{6,}$/.test(String(libraryId || ''))) return { pageId: '', ativo: null };
+    if (!/^\d{6,}$/.test(String(libraryId || ''))) return { pageId: '', ativo: null, parceria: null };
     const html = await fetchLibraryHtml(`id=${libraryId}`);
-    return self.MineraiRastreio.lerAnuncio(html, libraryId);
+    const anuncio = self.MineraiRastreio.lerAnuncio(html, libraryId);
+    return { ...anuncio, parceria: self.MineraiRastreio.lerParceria(html, libraryId) };
   }
 
   /**
@@ -1258,6 +1259,8 @@
         total: n > 0 ? n : null,
         pageId: anuncio.pageId,
         ativo: anuncio.ativo,
+        // Parceria: o total acima é da marca que paga o anúncio.
+        anunciante: anuncio.parceria ? anuncio.parceria.anunciante : '',
         country
       };
     } catch (e) {
@@ -2017,6 +2020,7 @@
       ...cardData,
       pageActiveAds: leitura.total || 0,
       pageIdReal: leitura.pageId || '',
+      anuncianteNome: leitura.anunciante || '',
       country: leitura.country || '',
       adActive: typeof leitura.ativo === 'boolean' ? leitura.ativo : null,
       status: classifyStage(cardData.daysRunning, leitura.total)

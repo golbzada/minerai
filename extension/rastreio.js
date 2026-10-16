@@ -79,11 +79,14 @@ async function lerOfertaNaBiblioteca(meta, linha) {
   const libraryId = /^\d{6,}$/.test(String(meta.library_id || '')) ? String(meta.library_id) : '';
 
   let anuncio = { pageId: '', ativo: null };
+  // undefined = não deu para ler o anúncio (não mexe no que está salvo).
+  let parceria;
   if (libraryId) {
     const html = await buscarBiblioteca(`id=${libraryId}`);
     if (html === null) return { falhaRede: true };
     if (R.pareceBloqueio(html)) return { bloqueio: true };
     anuncio = R.lerAnuncio(html, libraryId);
+    if (anuncio.pageId) parceria = R.lerParceria(html, libraryId);
   }
 
   const conhecido = /^\d{6,}$/.test(String(meta.page_id_real || '')) ? String(meta.page_id_real) : '';
@@ -129,7 +132,8 @@ async function lerOfertaNaBiblioteca(meta, linha) {
     ativo: anuncio.ativo,
     pageId: anuncio.pageId || conhecido,
     pageIdConfirmado,
-    country
+    country,
+    parceria
   };
 }
 
@@ -200,6 +204,8 @@ async function gravarMedicao(linha, leitura, hoje, token, brasil = null) {
     page_id_real: leitura.pageId || meta.page_id_real,
     country: leitura.country || meta.country
   };
+  // Anúncio em parceria: o total é da marca que paga, não da página que aparece.
+  if (leitura.parceria !== undefined) novaMeta.anunciante_nome = leitura.parceria ? leitura.parceria.anunciante : undefined;
   if (brasil && brasil.anunciante !== null && brasil.anunciante !== undefined) {
     novaMeta.brasil_ads = brasil.anunciante;
     novaMeta.brasil_site = brasil.site ?? undefined;
