@@ -1964,3 +1964,75 @@
 .page-guide-link:hover {
   color: var(--text-primary);
 }
+
+/* ==============================================================================
+   MODELAR: abas (páginas | roteiros) e roteiros dos vídeos
+   ============================================================================== */
+.modelar-abas {
+  margin: 0 0 14px;
+}
+
+.roteiro-list {
+  display: grid;
+  gap: 10px;
+}
+
+.roteiro-item {
+  padding: 12px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  background: var(--bg-card);
+}
+
+.roteiro-item.aberto {
+  border-color: rgba(212, 160, 39, 0.55);
+}
+
+.roteiro-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.roteiro-titulo {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.roteiro-titulo span {
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+}
+
+.roteiro-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.roteiro-gancho {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.roteiro-gancho span {
+  color: var(--gold-solid);
+  font-weight: 800;
+}
+
+.roteiro-texto {
+  max-height: 420px;
+  margin: 10px 0 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--bg-card-alt);
+  color: var(--text-primary);
+  font: 0.78rem/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}

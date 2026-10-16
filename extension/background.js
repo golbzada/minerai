@@ -845,7 +845,7 @@ async function saveCapturedOffer(rawOfferData) {
 //   empacotador.js     baixa os arquivos e monta o zip (documento oculto)
 //   movimentos-pagina.js  vai dentro do zip e devolve os movimentos
 
-importScripts('captura.js');
+importScripts('captura.js', 'ver-regras.js');
 
 const MODELAR_ESPERA_MS = 3500;
 
@@ -1117,6 +1117,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         telaAberta: err.telaAberta === true,
         origem: err.origem || null
       }));
+    return true;
+  }
+
+  // Ver/comparar a captura guardada neste computador (ver.html). Só do painel.
+  if (message.type === 'MODELAR_VER') {
+    const idCaptura = self.MineraiVer.idSeguro(message.id);
+    if (!vemDoPainel || !idCaptura) {
+      sendResponse({ success: false, error: 'Pedido não autorizado.' });
+      return true;
+    }
+    const parametros = new URLSearchParams({ id: idCaptura });
+    const comparar = self.MineraiVer.enderecoSeguro(message.comparar);
+    if (comparar) parametros.set('comparar', comparar);
+    else if (message.modo === 'lado') parametros.set('modo', 'lado');
+    chrome.tabs.create({ url: chrome.runtime.getURL(`ver.html?${parametros.toString()}`) })
+      .then(() => sendResponse({ success: true }))
+      .catch((e) => sendResponse({ success: false, error: e.message }));
     return true;
   }
 

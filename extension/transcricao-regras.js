@@ -229,5 +229,19 @@
     return 'portuguese';
   }
 
-  self.MineraiTranscricao = { formatarTempo, montarRoteiro, roteiroEmTexto, nomeDoRoteiro, idiomaProvavel };
+  // ---------------------------------------------------------------------------
+  // Roteiros guardados na extensão (aba "Roteiros" do Modelar no painel).
+  // Ficam no computador da pessoa, nunca no banco: custo zero.
+  // ---------------------------------------------------------------------------
+  const ROTEIROS_MAX = 100;
+  const ROTEIRO_TEXTO_MAX = 30000;
+
+  /** Lista nova com `novo` no topo, no máximo 100, texto cortado. */
+  function juntarRoteiro(lista, novo) {
+    const validos = (Array.isArray(lista) ? lista : []).filter((r) => r && typeof r === 'object' && r.id);
+    const item = { ...novo, texto: String(novo.texto || '').slice(0, ROTEIRO_TEXTO_MAX) };
+    return [item, ...validos.filter((r) => r.id !== item.id)].slice(0, ROTEIROS_MAX);
+  }
+
+  self.MineraiTranscricao = { formatarTempo, montarRoteiro, roteiroEmTexto, nomeDoRoteiro, idiomaProvavel, juntarRoteiro };
 })();

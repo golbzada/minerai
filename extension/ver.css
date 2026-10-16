@@ -1,0 +1,243 @@
+/* Mineraí - ver e comparar a captura (ver.html). Escuro, dourado discreto. */
+:root {
+  --fundo: #121110;
+  --painel: #1c1a18;
+  --borda: #2f2b26;
+  --texto: #f3eee4;
+  --suave: #a39b8c;
+  --ouro: #e8b84b;
+  --ouro-brilho: linear-gradient(135deg, #f7e4a8 0%, #e8b84b 45%, #c4922c 100%);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(circle at 100% 0, rgba(232, 184, 75, 0.08), transparent 30rem), var(--fundo);
+  color: var(--texto);
+  font: 14px/1.4 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--borda);
+}
+
+.marca {
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.marca-m {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  margin-right: 4px;
+  place-items: center;
+  border: 2px solid var(--ouro);
+  border-radius: 7px;
+  color: var(--ouro);
+}
+
+.marca-sub {
+  color: var(--suave);
+  font-weight: 600;
+}
+
+.titulo {
+  display: grid;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.titulo strong {
+  overflow: hidden;
+  font-size: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.original {
+  color: var(--suave);
+  font-size: 0.78rem;
+  text-decoration: none;
+}
+
+.original:hover {
+  color: var(--ouro);
+}
+
+.controles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.grupo {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--borda);
+  border-radius: 11px;
+  background: var(--painel);
+}
+
+.grupo button {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--suave);
+  font: inherit;
+  font-weight: 800;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.grupo button.ativo {
+  background: #2a2622;
+  color: var(--texto);
+}
+
+.comparar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--borda);
+}
+
+.comparar label {
+  color: var(--suave);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.comparar input {
+  flex: 1 1 280px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+  background: var(--painel);
+  color: var(--texto);
+  font: inherit;
+}
+
+.ouro {
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--ouro-brilho);
+  color: #1a1a1a;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.aviso {
+  margin: 12px 18px 0;
+  padding: 10px 14px;
+  border: 1px solid #5a4a22;
+  border-radius: 10px;
+  background: #2a2316;
+  color: #f3dfa6;
+}
+
+.palco {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  min-height: 0;
+  padding: 14px 18px 18px;
+}
+
+body[data-modo="so"] .palco {
+  grid-template-columns: 1fr;
+}
+
+body[data-modo="so"] .lado-sua {
+  display: none;
+}
+
+.lado {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.rotulo {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 6px;
+  color: var(--suave);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.rotulo a {
+  color: var(--ouro);
+  text-decoration: none;
+  text-transform: none;
+}
+
+.moldura {
+  display: flex;
+  flex: 1 1 auto;
+  justify-content: center;
+  min-height: 420px;
+  overflow: hidden;
+  border: 1px solid var(--borda);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.moldura iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+/* Celular: 390 px, como um iPhone/Android comum. */
+body[data-largura="cel"] .moldura {
+  background: #0d0c0b;
+}
+
+body[data-largura="cel"] .moldura iframe {
+  width: 390px;
+  max-width: 100%;
+  border-right: 1px solid var(--borda);
+  border-left: 1px solid var(--borda);
+}
+
+.dica {
+  margin: 6px 2px 0;
+  color: var(--suave);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 900px) {
+  .palco {
+    grid-template-columns: 1fr;
+  }
+}

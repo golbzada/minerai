@@ -234,9 +234,27 @@
     );
   });
 
-  // 4. Radar do nicho: o painel lista/salva buscas e pede "rodar agora".
-  //    Só passam tipos RADAR_*; qualquer outro pedido é recusado aqui.
-  const RADAR_PERMITIDOS = ['RADAR_LISTAR', 'RADAR_SALVAR_BUSCAS', 'RADAR_RODAR'];
+  // 4. Radar do nicho (listar/salvar buscas, rodar agora), ver/comparar a
+  //    captura do Modelar e os roteiros guardados. Só os tipos da lista
+  //    passam; qualquer outro pedido é recusado aqui.
+  const RADAR_PERMITIDOS = ['RADAR_LISTAR', 'RADAR_SALVAR_BUSCAS', 'RADAR_RODAR', 'MODELAR_VER', 'ROTEIROS_LISTAR', 'ROTEIROS_APAGAR'];
+
+  /** Só os campos que cada pedido usa, com tamanho limitado. */
+  function mensagemDoPedido(pedido) {
+    if (pedido.type === 'RADAR_SALVAR_BUSCAS') {
+      return { type: pedido.type, buscas: Array.isArray(pedido.buscas) ? pedido.buscas.slice(0, 20) : [] };
+    }
+    if (pedido.type === 'MODELAR_VER') {
+      return {
+        type: pedido.type,
+        id: String(pedido.id || '').slice(0, 160),
+        comparar: String(pedido.comparar || '').slice(0, 2048),
+        modo: pedido.modo === 'lado' ? 'lado' : 'so'
+      };
+    }
+    if (pedido.type === 'ROTEIROS_APAGAR') return { type: pedido.type, id: String(pedido.id || '').slice(0, 60) };
+    return { type: pedido.type };
+  }
 
   function responderRadar(id, resposta) {
     window.postMessage({ type: 'MINERAI_RADAR_RESPOSTA', id, resposta }, window.location.origin);
@@ -253,9 +271,7 @@
       responderRadar(id, { success: false, error: 'EXTENSAO_AUSENTE' });
       return;
     }
-    const mensagem = pedido.type === 'RADAR_SALVAR_BUSCAS'
-      ? { type: pedido.type, buscas: Array.isArray(pedido.buscas) ? pedido.buscas.slice(0, 20) : [] }
-      : { type: pedido.type };
+    const mensagem = mensagemDoPedido(pedido);
     try {
       chrome.runtime.sendMessage(mensagem, (resposta) => {
         if (chrome.runtime?.lastError) {

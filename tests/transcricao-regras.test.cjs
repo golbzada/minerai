@@ -173,3 +173,17 @@ test('vídeo sem áudio é avisado diferente de vídeo só com música', () => {
   const txt = T.roteiroEmTexto(T.montarRoteiro({ duracao: 0, chunks: [], semAudio: true }), { pagina: 'X' });
   assert.match(txt, /Não deu para ouvir o áudio/);
 });
+
+test('roteiros guardados: o novo entra no topo, guarda no máximo 100 e corta texto enorme', () => {
+  const lista = Array.from({ length: 100 }, (_, i) => ({ id: `r${i}`, texto: 'x' }));
+  const nova = T.juntarRoteiro(lista, { id: 'novo', texto: 'y'.repeat(50000), pagina: 'Loja' });
+  assert.equal(nova.length, 100);
+  assert.equal(nova[0].id, 'novo');
+  assert.equal(nova[0].texto.length, 30000);
+  assert.equal(nova[99].id, 'r98');
+});
+
+test('roteiros: lista estragada no armazenamento não quebra', () => {
+  assert.equal(T.juntarRoteiro(null, { id: 'a', texto: 't' }).length, 1);
+  assert.equal(T.juntarRoteiro([null, 5, { id: 'b' }], { id: 'a', texto: 't' }).length, 2);
+});

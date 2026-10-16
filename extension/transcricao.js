@@ -91,7 +91,29 @@ async function concluirTranscricao(message) {
   const texto = T.roteiroEmTexto(roteiro, { pagina: meta.pagina, dias: meta.dias, libraryId: meta.libraryId });
   const nome = T.nomeDoRoteiro(meta.nomeVideo);
   await baixarTexto(texto, nome);
+  await guardarRoteiro({ nome, texto, pagina: meta.pagina, libraryId: meta.libraryId, dias: meta.dias, duracao: roteiro.duracao, temFala: roteiro.temFala, gancho: roteiro.gancho?.texto || '' });
   avisarAba(meta.tabId, { etapa: 'pronto', nome, temFala: roteiro.temFala });
+}
+
+// Roteiros guardados neste computador (aba "Roteiros" do Modelar no painel).
+// Só os vídeos que a pessoa baixou; nunca vai para o banco.
+const ROTEIROS_CHAVE = 'minerai_roteiros';
+
+async function lerRoteiros() {
+  const r = await chrome.storage.local.get(ROTEIROS_CHAVE);
+  return Array.isArray(r[ROTEIROS_CHAVE]) ? r[ROTEIROS_CHAVE] : [];
+}
+
+async function guardarRoteiro(dados) {
+  try {
+    transcricaoSeq += 1;
+    const novo = { ...dados, id: `r${Date.now().toString(36)}${transcricaoSeq}`, criadoEm: new Date().toISOString() };
+    const lista = self.MineraiTranscricao.juntarRoteiro(await lerRoteiros(), novo);
+    await chrome.storage.local.set({ [ROTEIROS_CHAVE]: lista });
+  } catch (e) {
+    // O .txt já foi baixado: não guardar a cópia não é motivo para falhar.
+    console.warn('[Mineraí] Não deu para guardar o roteiro:', e && e.message);
+  }
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -127,6 +149,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })()
       .then(sendResponse)
       .catch((e) => sendResponse({ success: false, error: erroLegivel(e.message) }));
+    return true;
+  }
+
+  // Painel: listar e apagar os roteiros guardados. Só do NOSSO painel.
+  if (message.type === 'ROTEIROS_LISTAR' || message.type === 'ROTEIROS_APAGAR') {
+    const doPainel = Boolean(sender?.url && DASHBOARD_URLS.some((base) => sender.url.startsWith(`${base}/`)));
+    if (!doPainel) {
+      sendResponse({ success: false, error: 'Origem não autorizada.' });
+      return true;
+    }
+    (async () => {
+      let lista = await lerRoteiros();
+      if (message.type === 'ROTEIROS_APAGAR') {
+        lista = lista.filter((r) => r && r.id !== String(message.id || ''));
+        await chrome.storage.local.set({ [ROTEIROS_CHAVE]: lista });
+      }
+      return { success: true, roteiros: lista };
+    })()
+      .then(sendResponse)
+      .catch((e) => sendResponse({ success: false, error: e.message }));
     return true;
   }
 

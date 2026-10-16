@@ -806,9 +806,18 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage 
           const zip = await mxMontarZip(arquivos);
           const blobUrl = URL.createObjectURL(zip);
           urlsAbertas.add(blobUrl);
+          // Também fica guardada neste computador, para ver e comparar dentro
+          // da extensão (ver.html). Se falhar (disco cheio), o .zip segue.
+          let idLocal = '';
+          try {
+            await self.MineraiCapturas.guardar({ id: pacote.pasta, url: msg.url, titulo: pacote.resumo.titulo, arquivos: pacote.arquivos });
+            idLocal = pacote.pasta;
+          } catch (e) {
+            console.warn('[Mineraí] Não deu para guardar a captura no computador:', e && e.message);
+          }
           sendResponse({
             success: true,
-            data: { blobUrl, pasta: `${pacote.pasta}.zip`, tamanhoZipKb: Math.round(zip.size / 1024), ...pacote.resumo }
+            data: { blobUrl, pasta: `${pacote.pasta}.zip`, idLocal, tamanhoZipKb: Math.round(zip.size / 1024), ...pacote.resumo }
           });
         })
         .catch((e) => sendResponse({ success: false, error: (e && e.message) || 'Falha ao montar o pacote.' }))

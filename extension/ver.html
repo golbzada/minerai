@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mineraí - ver captura</title>
+  <link rel="stylesheet" href="ver.css">
+</head>
+<body>
+  <!-- Ver a captura do Modelar Página e comparar com a página pronta.
+       A captura vem do banco interno da extensão (neste computador). -->
+  <header class="topo">
+    <div class="marca"><span class="marca-m">M</span> Mineraí <span class="marca-sub">· modelar página</span></div>
+    <div class="titulo">
+      <strong id="titulo">Carregando captura...</strong>
+      <a id="original" class="original" target="_blank" rel="noopener noreferrer"></a>
+    </div>
+    <div class="controles">
+      <div class="grupo" role="group" aria-label="Modo">
+        <button type="button" data-modo="so">Só a captura</button>
+        <button type="button" data-modo="lado">Lado a lado</button>
+      </div>
+      <div class="grupo" role="group" aria-label="Largura">
+        <button type="button" data-largura="pc">Computador</button>
+        <button type="button" data-largura="cel">Celular</button>
+      </div>
+    </div>
+  </header>
+
+  <form id="form-comparar" class="comparar" autocomplete="off">
+    <label for="sua-url">Sua página pronta</label>
+    <input id="sua-url" type="text" placeholder="https://sua-pagina.com.br" maxlength="2048">
+    <button type="submit" class="ouro">Comparar lado a lado</button>
+  </form>
+
+  <p id="aviso" class="aviso" hidden></p>
+
+  <main id="palco" class="palco">
+    <section class="lado">
+      <p class="rotulo">Captura <span id="rotulo-captura"></span></p>
+      <div class="moldura"><iframe id="frame-captura" title="Página capturada"
+        sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"></iframe></div>
+    </section>
+    <section class="lado lado-sua">
+      <p class="rotulo">Sua página <a id="abrir-sua" target="_blank" rel="noopener noreferrer" hidden>abrir em janela ↗</a></p>
+      <div class="moldura"><iframe id="frame-sua" title="Sua página" credentialless
+        sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"></iframe></div>
+      <p class="dica">Ficou em branco? Alguns sites não deixam abrir dentro de outra página. Use "abrir em janela" e coloque as duas janelas lado a lado.</p>
+    </section>
+  </main>
+
+  <script src="ver-regras.js"></script>
+  <script src="capturas-locais.js"></script>
+  <script src="ver.js"></script>
+</body>
+</html>

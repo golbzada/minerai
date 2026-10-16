@@ -6,6 +6,8 @@ import { navigate } from '../router';
 import { safeHttpUrl } from '../utils/url';
 import { domainOf, getExtras } from '../utils/offerExtras';
 import { loadModelagens, addModelagem, updateModelagem, removeModelagem, subscribeModelagens, MODELAGEM_TIPOS } from '../utils/modelagens';
+import { pedirAoRadar } from '../services/extensao';
+import RoteirosLista from '../components/RoteirosLista';
 
 /**
  * Modelar Página como aba própria: fila de capturas, histórico, ligação com a
@@ -42,6 +44,7 @@ export default function ModelarPage({ query }) {
   const [temExtensao, setTemExtensao] = useState(null);
   const [capturando, setCapturando] = useState(false);
   const [filtro, setFiltro] = useState('todas'); // todas | prontas | falhas | referencias
+  const [aba, setAba] = useState(() => (query?.get('aba') === 'roteiros' ? 'roteiros' : 'paginas'));
   const pedidoRef = useRef(null);
 
   useEffect(() => subscribeModelagens(() => setItems(loadModelagens())), []);
@@ -173,6 +176,18 @@ export default function ModelarPage({ query }) {
   const prontas = items.filter((m) => m.status === 'pronto').length;
   const referencias = items.filter((m) => m.fav).length;
 
+  /** Abre a captura guardada neste computador numa aba da extensão. */
+  async function verCaptura(m, modo) {
+    const r = await pedirAoRadar({ type: 'MODELAR_VER', id: m.result?.idLocal, modo });
+    if (!r.success) {
+      setNotice(
+        r.error === 'EXTENSAO_AUSENTE'
+          ? 'A extensão não respondeu. Recarregue esta página (F5) e tente de novo.'
+          : 'Esta captura não ficou guardada no computador. Clique em "Capturar de novo".'
+      );
+    }
+  }
+
   const fmt = (d) => (d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
 
   return (
@@ -196,6 +211,19 @@ export default function ModelarPage({ query }) {
         ]}
       />
 
+      <div className="view-switch modelar-abas" role="tablist" aria-label="O que ver">
+        <button type="button" role="tab" aria-selected={aba === 'paginas'} className={aba === 'paginas' ? 'active' : ''} onClick={() => setAba('paginas')}>
+          Páginas capturadas
+        </button>
+        <button type="button" role="tab" aria-selected={aba === 'roteiros'} className={aba === 'roteiros' ? 'active' : ''} onClick={() => setAba('roteiros')}>
+          Roteiros dos vídeos
+        </button>
+      </div>
+
+      {aba === 'roteiros' ? (
+        <RoteirosLista onNotice={setNotice} />
+      ) : (
+      <>
       <div className="panel">
         <form
           className="modelar-form"
@@ -227,7 +255,7 @@ export default function ModelarPage({ query }) {
             <button key={k} type="button" className={filtro === k ? 'active' : ''} onClick={() => setFiltro(k)}>{l}</button>
           ))}
         </div>
-        <span className="garimpo-count">Histórico salvo neste navegador</span>
+        <span className="garimpo-count">Capturas e histórico ficam neste computador</span>
       </div>
 
       {!visiveis.length && (
@@ -261,6 +289,12 @@ export default function ModelarPage({ query }) {
             </div>
 
             <div className="modelagem-actions">
+              {m.status === 'pronto' && m.result?.idLocal && (
+                <>
+                  <button type="button" className="mini-btn gold" onClick={() => verCaptura(m, 'so')} title="Abrir a página capturada aqui no navegador, sem descompactar">👁 Ver</button>
+                  <button type="button" className="mini-btn" onClick={() => verCaptura(m, 'lado')} title="Captura de um lado, a sua página pronta do outro">⇆ Comparar</button>
+                </>
+              )}
               <button type="button" className="mini-btn" disabled={capturando} onClick={() => iniciar(m.url, m.offerId, m.id)}>↻ Capturar de novo</button>
               <button type="button" className={`mini-btn ${m.fav ? 'active' : ''}`} onClick={() => updateModelagem(m.id, { fav: !m.fav })} title="Guardar como referência">{m.fav ? '★ Referência' : '☆ Referência'}</button>
               <select value={m.tipo || ''} onChange={(e) => updateModelagem(m.id, { tipo: e.target.value })} title="Tipo de página">
@@ -276,12 +310,11 @@ export default function ModelarPage({ query }) {
       <div className="panel soon">
         <p className="eyebrow">Em breve nesta aba</p>
         <ul>
-          <li>Pré-visualizar a captura aqui dentro antes de baixar.</li>
           <li>Trazer também o player de vídeo de plataformas (Vturb, Panda).</li>
-          <li>Guardar as capturas na nuvem para reabrir de qualquer computador.</li>
-          <li>Comparar a captura com a sua página pronta, lado a lado.</li>
         </ul>
       </div>
+      </>
+      )}
     </div>
   );
 }
